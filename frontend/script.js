@@ -404,6 +404,7 @@ async function handleDeleteSession() {
 // ═══════════════════════════════════════════════════════════
 function renderTypePanel() {
   const body = document.getElementById('typeTableBody');
+  if (!body) return;
   const keys  = Object.keys(currentData);
 
   if (!keys.length) {
@@ -1156,8 +1157,8 @@ function clearUI() {
       <div class="empty-state-text">อัปโหลดไฟล์ CSV, Excel หรือ SQL เพื่อเริ่มต้น</div>
     </div>`;
   document.getElementById('bulkSection').classList.remove('visible');
-  document.getElementById('typeTableBody').innerHTML =
-    '<tr><td colspan="3"><div class="empty-hint">No file loaded</div></td></tr>';
+  const _tb = document.getElementById('typeTableBody');
+  if (_tb) _tb.innerHTML = '<tr><td colspan="3"><div class="empty-hint">No file loaded</div></td></tr>';
   const card = document.getElementById('sessionCard');
   if (card) card.style.display = 'none';
   document.getElementById('unknownWarnings')?.remove();

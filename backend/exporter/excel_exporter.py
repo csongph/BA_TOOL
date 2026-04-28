@@ -183,23 +183,23 @@ def _write_raw_section(ws, table_name: str, columns: list, start_row: int) -> in
 def _write_avro_section(ws, table_name: str, columns: list, start_row: int) -> int:
     """
     Section 2 — Confluent (AVRO)
-    NO. | Name | Partition Key | Raw Format type | Logical Format type | direct move / logic | Possible Value
+    NO. | Name | Partition Key | Raw Format type | Logical Format type | direct move / logic | Description | Possible Value
     """
     # Topic row
-    ws.merge_cells(f"A{start_row}:G{start_row}")
+    ws.merge_cells(f"A{start_row}:H{start_row}")
     _s(ws, start_row, 1,
        f"Topic:    UAT_EEAS_RAW_dbWorkforce_{table_name}",
        bg=_C["topic_bg"], bold=True, align_h="left")
     start_row += 1
 
     # Confluent (AVRO) label
-    ws.merge_cells(f"A{start_row}:G{start_row}")
+    ws.merge_cells(f"A{start_row}:H{start_row}")
     _s(ws, start_row, 1, "Confluent (AVRO)",
        bg=_C["avro_bg"], bold=True, align_h="left")
     start_row += 1
 
     # Detail Section
-    ws.merge_cells(f"A{start_row}:G{start_row}")
+    ws.merge_cells(f"A{start_row}:H{start_row}")
     _s(ws, start_row, 1, "Detail Section",
        bg=_C["detail_bg"], bold=True, align_h="left")
     start_row += 1
@@ -207,7 +207,7 @@ def _write_avro_section(ws, table_name: str, columns: list, start_row: int) -> i
     # Column headers
     for c, h in enumerate(
         ["NO.", "Name", "Partition Key", "Raw Format type",
-         "Logical Format type", "direct move / logic", "Possible Value"], 1
+         "Logical Format type", "direct move / logic", "Description", "Possible Value"], 1
     ):
         _s(ws, start_row, c, h,
            bg=_C["col_hdr_bg"], fg=_C["col_hdr_fg"], bold=True)
@@ -217,15 +217,15 @@ def _write_avro_section(ws, table_name: str, columns: list, start_row: int) -> i
     for i, col in enumerate(columns, 1):
         r = start_row
         bg = _C["row_odd"] if i % 2 == 1 else _C["row_even"]
-        is_pk = "Y" if col.get("is_pk") else "N"
 
         _s(ws, r, 1, i,                              bg=bg)
         _s(ws, r, 2, col.get("column_name", ""),     bg=bg, align_h="left")
-        _s(ws, r, 3, is_pk,                          bg=_C["pk_bg"] if is_pk == "Y" else bg)
+        _s(ws, r, 3, "",                             bg=bg)   # Partition Key — ให้ user กรอกเอง
         _s(ws, r, 4, col.get("raw_type", ""),        bg=bg)
         _s(ws, r, 5, col.get("logical_type", ""),    bg=_C["logical_bg"])
         _s(ws, r, 6, "Direct move",                  bg=bg)
-        _s(ws, r, 7, "",                             bg=bg, align_h="left", wrap=True)
+        _s(ws, r, 7, "",                             bg=bg, align_h="left", wrap=True)  # Description
+        _s(ws, r, 8, "",                             bg=bg, align_h="left", wrap=True)  # Possible Value
         start_row += 1
 
     return start_row + 1
@@ -299,10 +299,10 @@ def _build_csv_rows(table_name: str, columns: list, anomalies: list | None = Non
     rows.append([f"Topic:    UAT_EEAS_RAW_dbWorkforce_{table_name}"])
     rows.append(["Confluent (AVRO)"])
     rows.append(["Detail Section"])
-    rows.append(["NO.", "Name", "Partition Key", "Raw Format type", "Logical Format type", "direct move / logic", "Possible Value"])
+    rows.append(["NO.", "Name", "Partition Key", "Raw Format type", "Logical Format type", "direct move / logic", "Description", "Possible Value"])
     for i, col in enumerate(columns, 1):
-        rows.append([i, col.get("column_name", ""), "Y" if col.get("is_pk") else "N",
-                     col.get("raw_type", ""), col.get("logical_type", ""), "Direct move", ""])
+        rows.append([i, col.get("column_name", ""), "",   # Partition Key — ให้ user กรอกเอง
+                     col.get("raw_type", ""), col.get("logical_type", ""), "Direct move", "", ""])
 
     # ── WARNING section (byte anomaly) ───────────────────
     if anomalies:

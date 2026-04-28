@@ -23,7 +23,6 @@ CREATE TABLE hrPayroll_Details (
 
     CONSTRAINT PK_hrPayroll PRIMARY KEY (PayrollID),
 
-    -- Possible Values (บังคับผ่าน FK)
     CONSTRAINT FK_PaymentMethod 
         FOREIGN KEY (PaymentMethod) 
         REFERENCES PaymentMethod_Lookup(PaymentMethodID)
