@@ -14,7 +14,7 @@ _POOL_MIN = int(os.getenv("DB_POOL_MIN", "2"))
 _POOL_MAX = int(os.getenv("DB_POOL_MAX", "10"))
 
 # Registry: db_name → pool
-_pools: dict[str, pool.SimpleConnectionPool] = {}
+_pools: dict[str, pool.ThreadedConnectionPool] = {}
 _pools_lock = threading.Lock()
 
 
@@ -57,7 +57,7 @@ def _init_single(db_name: str, db_url: str) -> None:
         logger.info(f"ℹ️  Pool '{db_name}' already initialized — skipping")
         return
     try:
-        _pools[db_name] = pool.SimpleConnectionPool(_POOL_MIN, _POOL_MAX, db_url)
+        _pools[db_name] = pool.ThreadedConnectionPool(_POOL_MIN, _POOL_MAX, db_url)
         logger.info(f"✅ DB pool '{db_name}' initialized (min={_POOL_MIN}, max={_POOL_MAX})")
     except OperationalError as e:
         logger.error(f"❌ Failed to create pool '{db_name}': {e}")

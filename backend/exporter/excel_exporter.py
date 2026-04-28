@@ -2,6 +2,7 @@ import io
 import re
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 _THIN = Side(style="thin", color="CCCCCC")
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
@@ -28,6 +29,11 @@ _C = {
     "warn_border": "FF4D6D",
 }
 
+# Layout: Raw (cols 1-8) | Gap (cols 9-10) | AVRO (cols 11-18)
+_RAW_END    = 8
+_AVRO_START = 11
+_AVRO_END   = 18
+
 
 def _s(ws, row, col, value, bg=None, fg="000000", bold=False,
        align_h="center", wrap=False):
@@ -50,21 +56,27 @@ def _sw(ws, row, col, value, bold=False, align_h="left", wrap=True):
     return c
 
 
-def _write_warning_section(ws, anomalies: list, start_row: int, num_cols: int = 8) -> int:
+def _merge(ws, row, c1, c2):
+    if c2 > c1:
+        ws.merge_cells(start_row=row, start_column=c1, end_row=row, end_column=c2)
+
+
+def _write_warning_section(ws, anomalies: list, start_row: int) -> int:
     """
-    เขียน WARNING section ต่อท้าย sheet สำหรับ byte anomaly
-    anomalies = [{ column_name, source_type, raw_type, detail, file }, ...]
+    เขียน WARNING section รวม ต่อท้าย sheet สำหรับ byte anomaly
+    anomalies = [{ table, column_name, source_type, raw_type, detail, file }, ...]
+    ครอบคลุมความกว้างทั้งหมด (cols 1-18)
     """
     if not anomalies:
         return start_row
 
-    last_col_letter = chr(ord('A') + num_cols - 1)   # 'H' เมื่อ num_cols=8
+    c1, c2 = 1, _AVRO_END
 
     # ── blank gap ─────────────────────────────────────────
     start_row += 1
 
     # ── header bar ────────────────────────────────────────
-    ws.merge_cells(f"A{start_row}:{last_col_letter}{start_row}")
+    _merge(ws, start_row, c1, c2)
     c = ws.cell(row=start_row, column=1,
                 value=f"⚠  WARNING — Byte Conversion Anomaly ({len(anomalies)} คอลัมน์)  ⚠")
     c.fill      = PatternFill("solid", start_color=_C["warn_hdr_bg"])
@@ -75,7 +87,7 @@ def _write_warning_section(ws, anomalies: list, start_row: int, num_cols: int = 
     start_row += 1
 
     # ── sub-header ────────────────────────────────────────
-    ws.merge_cells(f"A{start_row}:{last_col_letter}{start_row}")
+    _merge(ws, start_row, c1, c2)
     _sw(ws, start_row, 1,
         "คอลัมน์ด้านล่างถูกแปลงเป็น byte แต่ type ต้นทางไม่ใช่ decimal-family "
         "— กรุณาตรวจสอบ mapping และแก้ไขจุดที่ผิดพลาด",
@@ -84,78 +96,65 @@ def _write_warning_section(ws, anomalies: list, start_row: int, num_cols: int = 
     start_row += 1
 
     # ── column headers ────────────────────────────────────
-    headers = ["NO.", "Column Name", "Source SQL Type", "Raw Type (byte)", "Detail / คำอธิบาย", "File"]
-    header_widths = [6, 22, 18, 18, 52, 28]
-    for ci, h in enumerate(headers, 1):
-        c = ws.cell(row=start_row, column=ci, value=h)
-        c.fill      = PatternFill("solid", start_color=_C["warn_hdr_bg"])
-        c.font      = Font(name="Arial", size=10, bold=True, color=_C["warn_hdr_fg"])
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border    = _WARN_BORDER
-    # merge ส่วนที่เกินหัวตาราง (num_cols อาจเกิน 6 col)
-    if num_cols > len(headers):
-        ws.merge_cells(
-            start_row=start_row, start_column=len(headers),
-            end_row=start_row,   end_column=num_cols
-        )
+    warn_headers = ["NO.", "Table", "Column Name", "Source SQL Type",
+                    "Raw Type (byte)", "Detail / คำอธิบาย", "File"]
+    for ci, h in enumerate(warn_headers, 1):
+        cell = ws.cell(row=start_row, column=ci, value=h)
+        cell.fill      = PatternFill("solid", start_color=_C["warn_hdr_bg"])
+        cell.font      = Font(name="Arial", size=10, bold=True, color=_C["warn_hdr_fg"])
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border    = _WARN_BORDER
+    for ci in range(len(warn_headers) + 1, c2 + 1):
+        _sw(ws, start_row, ci, "")
     start_row += 1
 
     # ── data rows ─────────────────────────────────────────
     for i, a in enumerate(anomalies, 1):
-        _sw(ws, start_row, 1, i,              align_h="center", wrap=False)
-        _sw(ws, start_row, 2, a.get("column_name", ""))
-        _sw(ws, start_row, 3, a.get("source_type", ""))
-        _sw(ws, start_row, 4, a.get("raw_type", ""))
-        _sw(ws, start_row, 5, a.get("detail",  ""), wrap=True)
-        _sw(ws, start_row, 6, a.get("file",    ""))
-        # fill ช่องที่เกิน (ถ้า num_cols > 6)
-        for ci in range(7, num_cols + 1):
+        _sw(ws, start_row, 1, i,                      align_h="center", wrap=False)
+        _sw(ws, start_row, 2, a.get("table",       ""))
+        _sw(ws, start_row, 3, a.get("column_name", ""))
+        _sw(ws, start_row, 4, a.get("source_type", ""))
+        _sw(ws, start_row, 5, a.get("raw_type",    ""))
+        _sw(ws, start_row, 6, a.get("detail",      ""), wrap=True)
+        _sw(ws, start_row, 7, a.get("file",        ""))
+        for ci in range(8, c2 + 1):
             _sw(ws, start_row, ci, "")
         ws.row_dimensions[start_row].height = 28
         start_row += 1
-
-    # ปรับความกว้างคอลัมน์ warning (ใช้เฉพาะถ้า col ยังไม่ได้ set)
-    for ci, w in enumerate(header_widths, 1):
-        col_letter = chr(ord('A') + ci - 1)
-        if ws.column_dimensions[col_letter].width < w:
-            ws.column_dimensions[col_letter].width = w
 
     return start_row
 
 
 def _write_raw_section(ws, table_name: str, columns: list, start_row: int) -> int:
     """
-    Section 1 — Raw (SQL Server)
+    Section 1 — Raw (SQL Server) เขียนที่ cols 1-8
     NO. | Name | PK or Unique | Max Length | Format | Nullable | Description | Possible Value
     """
-    # TABLE header
-    ws.merge_cells(f"A{start_row}:H{start_row}")
-    _s(ws, start_row, 1, f"TABLE:    {table_name}",
+    c1, c2 = 1, _RAW_END
+
+    _merge(ws, start_row, c1, c2)
+    _s(ws, start_row, c1, f"TABLE:    {table_name}",
        bg=_C["topic_bg"], bold=True, align_h="left")
     start_row += 1
 
-    # Raw (SQL Server) label
-    ws.merge_cells(f"A{start_row}:H{start_row}")
-    _s(ws, start_row, 1, "Raw (SQL Server)",
+    _merge(ws, start_row, c1, c2)
+    _s(ws, start_row, c1, "Raw (SQL Server)",
        bg=_C["raw_bg"], bold=True, align_h="left")
     start_row += 1
 
-    # Detail Section
-    ws.merge_cells(f"A{start_row}:H{start_row}")
-    _s(ws, start_row, 1, "Detail Section",
+    _merge(ws, start_row, c1, c2)
+    _s(ws, start_row, c1, "Detail Section",
        bg=_C["detail_bg"], bold=True, align_h="left")
     start_row += 1
 
-    # Column headers
-    for c, h in enumerate(
+    for ci, h in enumerate(
         ["NO.", "Name", "PK or Unique", "Max Length",
          "Format", "Nullable", "Description", "Possible Value"], 1
     ):
-        _s(ws, start_row, c, h,
+        _s(ws, start_row, ci, h,
            bg=_C["col_hdr_bg"], fg=_C["col_hdr_fg"], bold=True)
     start_row += 1
 
-    # Data rows
     for i, col in enumerate(columns, 1):
         r = start_row
         bg = _C["row_odd"] if i % 2 == 1 else _C["row_even"]
@@ -167,91 +166,124 @@ def _write_raw_section(ws, table_name: str, columns: list, start_row: int) -> in
 
         base_type = re.split(r"[\(\s]", sql_type.lower().strip())[0]
 
-        _s(ws, r, 1, i,           bg=bg)
-        _s(ws, r, 2, col.get("column_name", ""),   bg=bg, align_h="left")
-        _s(ws, r, 3, is_pk,       bg=_C["pk_bg"] if is_pk == "Y" else bg)
-        _s(ws, r, 4, max_len,     bg=bg)
-        _s(ws, r, 5, base_type,   bg=bg)
-        _s(ws, r, 6, col.get("nullable", ""),      bg=bg)
-        _s(ws, r, 7, "",          bg=bg, align_h="left", wrap=True)
-        _s(ws, r, 8, "",          bg=bg, align_h="left", wrap=True)
+        _s(ws, r, 1, i,                          bg=bg)
+        _s(ws, r, 2, col.get("column_name", ""), bg=bg, align_h="left")
+        _s(ws, r, 3, is_pk,                      bg=_C["pk_bg"] if is_pk == "Y" else bg)
+        _s(ws, r, 4, max_len,                    bg=bg)
+        _s(ws, r, 5, base_type,                  bg=bg)
+        _s(ws, r, 6, col.get("nullable", ""),    bg=bg)
+        _s(ws, r, 7, "",                         bg=bg, align_h="left", wrap=True)
+        _s(ws, r, 8, "",                         bg=bg, align_h="left", wrap=True)
         start_row += 1
 
-    return start_row + 1  # blank gap
+    return start_row
 
 
 def _write_avro_section(ws, table_name: str, columns: list, start_row: int) -> int:
     """
-    Section 2 — Confluent (AVRO)
+    Section 2 — Confluent (AVRO) เขียนที่ cols 11-18 (ข้างๆ Raw)
     NO. | Name | Partition Key | Raw Format type | Logical Format type | direct move / logic | Description | Possible Value
+    Partition Key ดึงจาก is_pk อัตโนมัติ
     """
-    # Topic row
-    ws.merge_cells(f"A{start_row}:H{start_row}")
-    _s(ws, start_row, 1,
+    c1, c2 = _AVRO_START, _AVRO_END
+
+    _merge(ws, start_row, c1, c2)
+    _s(ws, start_row, c1,
        f"Topic:    UAT_EEAS_RAW_dbWorkforce_{table_name}",
        bg=_C["topic_bg"], bold=True, align_h="left")
     start_row += 1
 
-    # Confluent (AVRO) label
-    ws.merge_cells(f"A{start_row}:H{start_row}")
-    _s(ws, start_row, 1, "Confluent (AVRO)",
+    _merge(ws, start_row, c1, c2)
+    _s(ws, start_row, c1, "Confluent (AVRO)",
        bg=_C["avro_bg"], bold=True, align_h="left")
     start_row += 1
 
-    # Detail Section
-    ws.merge_cells(f"A{start_row}:H{start_row}")
-    _s(ws, start_row, 1, "Detail Section",
+    _merge(ws, start_row, c1, c2)
+    _s(ws, start_row, c1, "Detail Section",
        bg=_C["detail_bg"], bold=True, align_h="left")
     start_row += 1
 
-    # Column headers
-    for c, h in enumerate(
+    for ci, h in enumerate(
         ["NO.", "Name", "Partition Key", "Raw Format type",
          "Logical Format type", "direct move / logic", "Description", "Possible Value"], 1
     ):
-        _s(ws, start_row, c, h,
+        _s(ws, start_row, c1 + ci - 1, h,
            bg=_C["col_hdr_bg"], fg=_C["col_hdr_fg"], bold=True)
     start_row += 1
 
-    # Data rows
     for i, col in enumerate(columns, 1):
         r = start_row
         bg = _C["row_odd"] if i % 2 == 1 else _C["row_even"]
+        is_pk = "Y" if col.get("is_pk") else "N"
 
-        _s(ws, r, 1, i,                              bg=bg)
-        _s(ws, r, 2, col.get("column_name", ""),     bg=bg, align_h="left")
-        _s(ws, r, 3, "",                             bg=bg)   # Partition Key — ให้ user กรอกเอง
-        _s(ws, r, 4, col.get("raw_type", ""),        bg=bg)
-        _s(ws, r, 5, col.get("logical_type", ""),    bg=_C["logical_bg"])
-        _s(ws, r, 6, "Direct move",                  bg=bg)
-        _s(ws, r, 7, "",                             bg=bg, align_h="left", wrap=True)  # Description
-        _s(ws, r, 8, "",                             bg=bg, align_h="left", wrap=True)  # Possible Value
+        _s(ws, r, c1+0, i,                              bg=bg)
+        _s(ws, r, c1+1, col.get("column_name", ""),     bg=bg, align_h="left")
+        _s(ws, r, c1+2, is_pk,                          bg=_C["pk_bg"] if is_pk == "Y" else bg)
+        _s(ws, r, c1+3, col.get("raw_type", ""),        bg=bg)
+        _s(ws, r, c1+4, col.get("logical_type", ""),    bg=_C["logical_bg"])
+        _s(ws, r, c1+5, "Direct move",                  bg=bg)
+        _s(ws, r, c1+6, "",                             bg=bg, align_h="left", wrap=True)
+        _s(ws, r, c1+7, "",                             bg=bg, align_h="left", wrap=True)
         start_row += 1
 
-    return start_row + 1
+    return start_row
+
+
+def _set_col_widths(ws):
+    widths = {
+        # Raw (A-H)
+        1: 8,  2: 22, 3: 14, 4: 12, 5: 16, 6: 12, 7: 40, 8: 40,
+        # Gap (I-J)
+        9: 4,  10: 4,
+        # AVRO (K-R)
+        11: 8, 12: 22, 13: 14, 14: 16, 15: 20, 16: 16, 17: 40, 18: 40,
+    }
+    for col_num, w in widths.items():
+        ws.column_dimensions[get_column_letter(col_num)].width = w
 
 
 def _build_sheet(ws, table_name: str, columns: list, anomalies: list | None = None):
-    """1 sheet = Raw section + AVRO section + (optional) WARNING section"""
-    next_row = _write_raw_section(ws, table_name, columns, start_row=1)
-    next_row = _write_avro_section(ws, table_name, columns, start_row=next_row)
+    """Single-table sheet: Raw (cols 1-8) และ AVRO (cols 11-18) เขียนพร้อมกันที่ row 1"""
+    end_row = _write_raw_section(ws, table_name, columns, start_row=1)
+    _write_avro_section(ws, table_name, columns, start_row=1)
 
     if anomalies:
-        _write_warning_section(ws, anomalies, start_row=next_row, num_cols=8)
+        tagged = [{**a, "table": table_name} for a in anomalies]
+        _write_warning_section(ws, tagged, start_row=end_row)
 
-    for col, w in zip("ABCDEFGH", [8, 22, 14, 17, 19, 18, 40, 40]):
-        ws.column_dimensions[col].width = w
+    _set_col_widths(ws)
+
+
+def _build_multi_sheet(ws, tables: dict, byte_anomalies: dict | None = None):
+    """
+    ทุกตารางอยู่ใน sheet เดียว เรียงลงมา
+    WARNING รวมกันทั้งหมดไว้ด้านล่างสุด พร้อมชื่อตาราง
+    """
+    current_row = 1
+    all_anomalies = []
+
+    for table_name, columns in tables.items():
+        _write_raw_section(ws, table_name, columns, start_row=current_row)
+        end_row = _write_avro_section(ws, table_name, columns, start_row=current_row)
+        current_row = end_row + 2   # 2-row gap ระหว่างตาราง
+
+        for a in (byte_anomalies or {}).get(table_name) or []:
+            all_anomalies.append({**a, "table": table_name})
+
+    if all_anomalies:
+        _write_warning_section(ws, all_anomalies, start_row=current_row)
+
+    _set_col_widths(ws)
 
 
 # ── Public API ────────────────────────────────────────────────────
 
 def export_confluent_xlsx(tables: dict, byte_anomalies: dict | None = None) -> io.BytesIO:
+    """ทุกตารางใน sheet เดียว เรียงลงมา WARNING รวมด้านล่าง"""
     wb = Workbook()
-    wb.remove(wb.active)
-    for table_name, columns in tables.items():
-        ws = wb.create_sheet(title=table_name[:31])
-        anomalies = (byte_anomalies or {}).get(table_name)
-        _build_sheet(ws, table_name, columns, anomalies=anomalies)
+    ws = wb.active
+    ws.title = "Data Dictionary"
+    _build_multi_sheet(ws, tables, byte_anomalies)
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -277,7 +309,6 @@ def export_all_xlsx(tables: dict) -> io.BytesIO:
 
 
 def _build_csv_rows(table_name: str, columns: list, anomalies: list | None = None) -> list:
-    import re
     rows = []
 
     # Raw section
@@ -295,32 +326,38 @@ def _build_csv_rows(table_name: str, columns: list, anomalies: list | None = Non
 
     rows.append([])  # blank gap
 
-    # Confluent section
+    # Confluent section (Partition Key จาก is_pk)
     rows.append([f"Topic:    UAT_EEAS_RAW_dbWorkforce_{table_name}"])
     rows.append(["Confluent (AVRO)"])
     rows.append(["Detail Section"])
     rows.append(["NO.", "Name", "Partition Key", "Raw Format type", "Logical Format type", "direct move / logic", "Description", "Possible Value"])
     for i, col in enumerate(columns, 1):
-        rows.append([i, col.get("column_name", ""), "",   # Partition Key — ให้ user กรอกเอง
+        rows.append([i, col.get("column_name", ""), "Y" if col.get("is_pk") else "N",
                      col.get("raw_type", ""), col.get("logical_type", ""), "Direct move", "", ""])
 
-    # ── WARNING section (byte anomaly) ───────────────────
-    if anomalies:
-        rows.append([])
-        rows.append([f"⚠ WARNING — Byte Conversion Anomaly ({len(anomalies)} คอลัมน์) ⚠"])
-        rows.append(["คอลัมน์ด้านล่างถูกแปลงเป็น byte แต่ type ต้นทางไม่ใช่ decimal-family "
-                     "— กรุณาตรวจสอบ mapping และแก้ไขจุดที่ผิดพลาด"])
-        rows.append(["NO.", "Column Name", "Source SQL Type", "Raw Type (byte)", "Detail / คำอธิบาย", "File"])
-        for i, a in enumerate(anomalies, 1):
-            rows.append([
-                i,
-                a.get("column_name", ""),
-                a.get("source_type",  ""),
-                a.get("raw_type",     ""),
-                a.get("detail",       ""),
-                a.get("file",         ""),
-            ])
+    return rows
 
+
+def _build_csv_warning_rows(anomalies_with_table: list) -> list:
+    """WARNING section รวม สำหรับ CSV — มีคอลัมน์ Table"""
+    if not anomalies_with_table:
+        return []
+    rows = []
+    rows.append([])
+    rows.append([f"⚠ WARNING — Byte Conversion Anomaly ({len(anomalies_with_table)} คอลัมน์) ⚠"])
+    rows.append(["คอลัมน์ด้านล่างถูกแปลงเป็น byte แต่ type ต้นทางไม่ใช่ decimal-family "
+                 "— กรุณาตรวจสอบ mapping และแก้ไขจุดที่ผิดพลาด"])
+    rows.append(["NO.", "Table", "Column Name", "Source SQL Type", "Raw Type (byte)", "Detail / คำอธิบาย", "File"])
+    for i, a in enumerate(anomalies_with_table, 1):
+        rows.append([
+            i,
+            a.get("table",        ""),
+            a.get("column_name",  ""),
+            a.get("source_type",  ""),
+            a.get("raw_type",     ""),
+            a.get("detail",       ""),
+            a.get("file",         ""),
+        ])
     return rows
 
 
@@ -337,16 +374,24 @@ def _csv_bytes(rows: list) -> io.BytesIO:
 
 def export_all_csv(tables: dict, byte_anomalies: dict | None = None) -> io.BytesIO:
     all_rows = []
+    all_anomalies = []
     first = True
     for table_name, columns in tables.items():
         if not first:
             all_rows.append([])
-        anomalies = (byte_anomalies or {}).get(table_name)
-        all_rows.extend(_build_csv_rows(table_name, columns, anomalies=anomalies))
+        all_rows.extend(_build_csv_rows(table_name, columns))
         first = False
+        for a in (byte_anomalies or {}).get(table_name) or []:
+            all_anomalies.append({**a, "table": table_name})
+
+    all_rows.extend(_build_csv_warning_rows(all_anomalies))
     return _csv_bytes(all_rows)
 
 
 def export_table_csv(columns: list, table_name: str = "Sheet1",
                      anomalies: list | None = None) -> io.BytesIO:
-    return _csv_bytes(_build_csv_rows(table_name, columns, anomalies=anomalies))
+    rows = _build_csv_rows(table_name, columns)
+    if anomalies:
+        tagged = [{**a, "table": table_name} for a in anomalies]
+        rows.extend(_build_csv_warning_rows(tagged))
+    return _csv_bytes(rows)

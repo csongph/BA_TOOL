@@ -1163,6 +1163,7 @@ function clearUI() {
   if (card) card.style.display = 'none';
   document.getElementById('unknownWarnings')?.remove();
   document.getElementById('byteAnomalyWarnings')?.remove();
+  document.getElementById('contentDupWarnings')?.remove();
   updateStats(0,0,0);
   updateBadges(0,0,'ready');
 }
@@ -1274,5 +1275,5 @@ async function downloadTableXLSX(tableName) {
 }
 
 window.addEventListener('beforeunload', () => {
-  if (sessionId) navigator.sendBeacon(`${API_BASE}/session/${sessionId}`, '{}');
+  if (sessionId) fetch(`${API_BASE}/session/${sessionId}`, { method: 'DELETE', keepalive: true });
 });

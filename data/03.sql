@@ -22,7 +22,7 @@ CREATE TABLE hrPayroll_Details (
     PayrollNote NVARCHAR(MAX) COLLATE Thai_CI_AS NULL,
 
     CONSTRAINT PK_hrPayroll PRIMARY KEY (PayrollID),
-
+-- Foreign Key Constraint
     CONSTRAINT FK_PaymentMethod 
         FOREIGN KEY (PaymentMethod) 
         REFERENCES PaymentMethod_Lookup(PaymentMethodID)

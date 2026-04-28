@@ -30,7 +30,7 @@ def _enable_ansi():
 BACKEND_MODULE = "backend.api.main:app"
 BACKEND_HOST   = "127.0.0.1"
 BACKEND_PORT   = 8000
-FRONTEND_DIR   = "./frontend"
+FRONTEND_DIR   = "./frontend/"
 FRONTEND_PORT  = 5500
 FRONTEND_URL   = f"http://127.0.0.1:{FRONTEND_PORT}"
 BACKEND_URL    = f"http://{BACKEND_HOST}:{BACKEND_PORT}"

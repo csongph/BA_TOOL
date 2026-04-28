@@ -1,0 +1,280 @@
+# 🗄️ BA_TOOL — SQL Data Type Converter
+
+> **MFEC Internship Project** — แปลง SQL DDL Script เป็น Confluent/Kafka Schema Mapping โดยอัตโนมัติ
+
+---
+
+## 📋 สารบัญ
+
+- [ภาพรวม](#ภาพรวม)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [การติดตั้ง](#การติดตั้ง)
+- [การตั้งค่า Environment](#การตั้งค่า-environment)
+- [วิธีใช้งาน](#วิธีใช้งาน)
+- [API Reference](#api-reference)
+- [โครงสร้างโปรเจกต์](#โครงสร้างโปรเจกต์)
+- [SQL Types ที่รองรับ](#sql-types-ที่รองรับ)
+- [ข้อจำกัด](#ข้อจำกัด)
+
+---
+
+## ภาพรวม
+
+BA_TOOL รับไฟล์ `.sql` (DDL `CREATE TABLE`) แล้วแปลง SQL Data Type ของแต่ละคอลัมน์ให้เป็น:
+
+| ระดับ | คำอธิบาย | ตัวอย่าง |
+|-------|----------|---------|
+| **Raw Type** | Primitive type ระดับ low-level | `string`, `int32`, `bytes` |
+| **Logical Type** | Semantic type ระดับสูง | `uuid`, `date`, `decimal` |
+| **Final Type** | Type สำหรับ Confluent Schema Registry | `STRING`, `INT`, `DECIMAL(12,2)` |
+
+ผลลัพธ์สามารถ export เป็น **XLSX** หรือ **CSV** พร้อมรายงาน FK validation และ byte anomaly warnings
+
+---
+
+## Features
+
+- 📂 **Drag & Drop Upload** — อัปโหลดไฟล์ `.sql` หลายไฟล์พร้อมกัน (สูงสุด 20 ไฟล์, 10 MB/ไฟล์)
+- 🔄 **Auto Type Conversion** — แปลง type จาก mapping database อัตโนมัติ พร้อม precision carry-over
+- ✏️ **Manual Override** — แก้ไข Final Type ของคอลัมน์ใดก็ได้ใน session
+- 🔗 **FK Validation** — ตรวจสอบ Foreign Key ข้ามตารางทั้งหมดที่ upload
+- ⚠️ **Byte Anomaly Detection** — แจ้งเตือนเมื่อ type mapping อาจผิดปกติ
+- 📊 **Export XLSX / CSV** — ดาวน์โหลดผลลัพธ์ทั้งหมดหรือรายตาราง
+- 🌙 **Dark / Light Mode** — สลับธีมได้
+- 🔒 **Rate Limiting & Security** — ป้องกัน abuse ด้วย slowapi
+
+---
+
+## Tech Stack
+
+| ชั้น | เทคโนโลยี | รายละเอียด |
+|------|-----------|-----------|
+| **Backend** | Python + FastAPI | uvicorn, slowapi,   |
+| **Database** | PostgreSQL | psycopg2 connection pool |
+| **Export** | openpyxl | XLSX พร้อม styling, CSV UTF-8-BOM |
+| **Frontend** | HTML5 + Vanilla JS | SheetJS (xlsx-0.20.3) |
+| **Dev Server** | Python http.server | Port 5500 |
+| **Config** | python-dotenv | `.env` file |
+
+---
+
+## การติดตั้ง
+
+### 1. Clone repository
+```bash
+git clone https://github.com/csongph/BA_TOOL.git
+cd BA_TOOL
+```
+
+### 2. ติดตั้ง Python dependencies
+```bash
+pip install fastapi uvicorn psycopg2-binary openpyxl python-dotenv slowapi pydantic
+```
+
+### 3. ตั้งค่า `.env` file (ดูหัวข้อ [การตั้งค่า Environment](#การตั้งค่า-environment))
+
+### 4. เริ่มต้นระบบ
+```bash
+python RUN.PY
+```
+
+ระบบจะเริ่ม backend + frontend และเปิด browser อัตโนมัติที่ `http://127.0.0.1:5500`
+
+---
+
+## การตั้งค่า Environment
+
+สร้างไฟล์ `.env` ที่ root directory:
+
+```env
+# Required: PostgreSQL connection URL
+DB_URL=postgresql://user:password@host:5432/dbname
+
+# Optional: Named DB pools เพิ่มเติม
+# DB_URL_STAGING=postgresql://...
+
+# Connection pool size (default: min=2, max=10)
+DB_POOL_MIN=2
+DB_POOL_MAX=10
+
+# CORS origins (default: localhost:5500 เท่านั้น)
+ALLOWED_ORIGINS=http://localhost:5500,http://127.0.0.1:5500
+```
+
+### Database Schema
+
+ระบบต้องการตาราง `sql_type_mapping` ใน PostgreSQL:
+
+```sql
+CREATE TABLE sql_type_mapping (
+    sql_type     VARCHAR NOT NULL,  -- SQL type ต้นทาง เช่น 'varchar'
+    raw_type     VARCHAR,           -- Raw type เช่น 'string'
+    logical_type VARCHAR,           -- Logical type เช่น 'uuid'
+    target_type  VARCHAR            -- Final type เช่น 'STRING'
+);
+```
+
+### Ports
+
+| Service | URL |
+|---------|-----|
+| Backend API | `http://127.0.0.1:8000` |
+| Frontend UI | `http://127.0.0.1:5500` |
+
+---
+
+## วิธีใช้งาน
+
+### 1. อัปโหลดไฟล์
+ลากไฟล์ `.sql` มาวางที่ dropzone หรือคลิกเพื่อเลือกไฟล์
+
+### 2. กด "Convert & Proceed"
+ระบบจะ parse DDL, แปลง type, ตรวจ FK และสร้าง session
+
+### 3. ดูผลลัพธ์
+ผลลัพธ์แสดงเป็นตารางต่อ table พร้อม:
+- **Raw / Logical / Final Type** ของแต่ละคอลัมน์
+- **PK / FK** indicators
+- **⚠ Byte Anomaly Warning** (ถ้ามี)
+- **FK Validation Errors/Warnings**
+
+
+### 5. Export
+ดาวน์โหลดเป็น XLSX หรือ CSV ทั้งหมด หรือรายตาราง
+
+---
+
+## API Reference
+
+Base URL: `http://127.0.0.1:8000`
+
+| Method | Endpoint | คำอธิบาย |
+|--------|----------|---------|
+| `GET` | `/health` | ตรวจสถานะ backend + จำนวน active sessions |
+| `POST` | `/convert` | อัปโหลด `.sql` files → parse + convert → สร้าง session |
+| `GET` | `/result/{session_id}` | ดึงผลลัพธ์ของ session |
+| `POST` | `/override/{session_id}` | แก้ไข Final Type ของคอลัมน์ |
+| `DELETE` | `/session/{session_id}` | ลบ session |
+| `GET` | `/export/{session_id}/xlsx` | Export ทุกตารางเป็น XLSX |
+| `GET` | `/export/{session_id}/xlsx/{table}` | Export ตารางที่ระบุเป็น XLSX |
+| `GET` | `/export/{session_id}/csv` | Export ทุกตารางเป็น CSV |
+| `GET` | `/export/{session_id}/csv/{table}` | Export ตารางที่ระบุเป็น CSV |
+
+### ตัวอย่าง: Convert
+
+```bash
+curl -X POST http://localhost:8000/convert \
+  -F "files=@schema.sql"
+```
+
+Response:
+```json
+{
+  "session_id": "uuid-v4",
+  "file_count": 1,
+  "tables": {
+    "users": [
+      {
+        "column_name": "id",
+        "source_sql_type": "INT",
+        "raw_type": "int32",
+        "logical_type": null,
+        "final_type": "INT",
+        "nullable": "NOT NULL",
+        "is_pk": true,
+        "fk": null
+      }
+    ]
+  },
+  "unknown": {},
+  "fk_errors": [],
+  "byte_anomalies": {}
+}
+```
+
+---
+
+## โครงสร้างโปรเจกต์
+
+```
+BA_TOOL/
+├── RUN.PY                    # Orchestrator: เริ่ม backend + frontend
+├── .env                      # Environment variables 
+├── backend/
+│   ├── api/
+│   │   └── main.py           # FastAPI app, routes, session management
+│   ├── core/
+│   │   ├── converter.py      # DataTypeConverter + byte anomaly detection
+│   │   └── cache_store.py    # In-memory session cache
+│   ├── parser/
+│   │   └── sql_parser.py     # SQL DDL parser + FK validator
+│   ├── exporter/
+│   │   └── excel_exporter.py # XLSX / CSV export
+│   ├── repository/
+│   │   └── mapping_repo.py   # PostgreSQL: โหลด type mapping
+│   └── config/
+│       ├── db.py             # Connection pool management
+│       └── logger.py         # Logging config
+├── frontend/
+│   ├── index.html            # Single-page UI
+│   ├── script.js             # Frontend logic
+│   └── style.css             # Styles (dark/light theme)
+└── data/
+    └── *.sql                 # ตัวอย่าง SQL files สำหรับทดสอบ
+```
+
+---
+
+## SQL Types ที่รองรับ
+
+### String
+`VARCHAR` · `NVARCHAR` · `CHAR` · `NCHAR` · `TEXT` · `NTEXT`
+
+### Numeric
+`INT` · `BIGINT` · `SMALLINT` · `TINYINT` · `DECIMAL` · `NUMERIC` · `FLOAT` · `REAL` · `MONEY` · `SMALLMONEY`
+
+### Date / Time
+`DATE` · `DATETIME` · `DATETIME2` · `SMALLDATETIME` · `TIME` · `TIMESTAMP` · `DATETIMEOFFSET`
+
+### Binary
+`BINARY` · `VARBINARY` · `IMAGE`
+
+### Other
+`BIT` · `UNIQUEIDENTIFIER` · `ROWVERSION` · `XML`
+
+### SQL Syntax ที่ Parser รองรับ
+
+| Syntax | รองรับ |
+|--------|--------|
+| `CREATE TABLE` / `CREATE TABLE IF NOT EXISTS` | ✅ |
+| Multiple tables ในไฟล์เดียว | ✅ |
+| Schema-qualified names (`schema.table`) | ✅ |
+| Quoted identifiers `"col"`, `[col]`, `'col'` | ✅ |
+| `COLLATE` clause (เช่น `Thai_CI_AS`) | ✅ ตัดออกอัตโนมัติ |
+| `NOT NULL` / `NULL` | ✅ |
+| `PRIMARY KEY` inline + table-level + multi-column | ✅ |
+| `FOREIGN KEY ... REFERENCES` table-level | ✅ |
+| `REFERENCES` inline | ✅ |
+| `CONSTRAINT fk_name FOREIGN KEY ...` | ✅ |
+| `IDENTITY` / `GENERATED` clause | ✅ ตัดออกอัตโนมัติ |
+| `DEFAULT` clause | ✅ ตัดออกอัตโนมัติ |
+
+---
+
+## ข้อจำกัด
+
+- รองรับเฉพาะไฟล์ `.sql` (ไม่รองรับ `.csv`, `.xlsx` สำหรับ convert)
+- สูงสุด **20 ไฟล์** / **10 MB** ต่อไฟล์ต่อครั้ง
+- Session เก็บใน **RAM** — หายเมื่อ server restart
+- Session TTL: **1 ชั่วโมง**
+- ไม่รองรับ `ALTER TABLE`, `DROP TABLE`, stored procedures
+- FK validation ทำได้เฉพาะ table ที่อยู่ใน batch เดียวกัน
+- ไม่มี Authentication — เหมาะสำหรับ **internal tool** เท่านั้น
+- Rate limit: **30 requests/minute** ต่อ IP สำหรับ `/convert`
+
+---
+
+## License
+
+MFEC Internship Project — Internal Use Only
