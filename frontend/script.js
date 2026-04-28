@@ -37,6 +37,15 @@ async function handleFiles(files) {
     return;
   }
 
+  // Reset ก่อนเสมอ ไม่ว่า modal จะตัดสินใจอย่างไร
+  currentData   = {};
+  uploadedFiles = [];
+  sessionId     = null;
+  converted     = false;
+  document.getElementById('fileList').innerHTML = '';
+  document.getElementById('convertBtn').disabled = true;
+  clearUI();
+
   // ── ตรวจ duplicate ก่อนทำอะไรทั้งนั้น ─────────────────
   const dupIssues = await detectDuplicates(supported);
   if (dupIssues.length > 0) {
@@ -48,14 +57,6 @@ async function handleFiles(files) {
     // proceed → ดำเนินการต่อแม้จะมี duplicate
   }
 
-  // Reset
-  currentData   = {};
-  uploadedFiles = [];
-  sessionId     = null;
-  converted     = false;
-  document.getElementById('fileList').innerHTML = '';
-  document.getElementById('convertBtn').disabled = true;
-  clearUI();
   setLoading(true);
 
   const sqlFiles   = supported.filter(f => /\.sql$/i.test(f.name));
