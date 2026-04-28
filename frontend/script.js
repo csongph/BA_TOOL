@@ -26,6 +26,53 @@ function onDrop(e) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  DATABASE SELECTION
+// ═══════════════════════════════════════════════════════════
+const dbTypeMap = {
+  'postgres_prod': { name: 'PostgreSQL (Production)', type: 'PostgreSQL', icon: '🐘', host: 'prod.db.com', port: 5432 },
+  'mysql_staging': { name: 'MySQL (Staging)', type: 'MySQL', icon: '🐬', host: 'staging.db.com', port: 3306 },
+  'postgres_dev': { name: 'PostgreSQL (Development)', type: 'PostgreSQL', icon: '🐘', host: 'localhost', port: 5432 },
+  'oracle_prod': { name: 'Oracle (Production)', type: 'Oracle', icon: '🔴', host: 'oracle.prod.com', port: 1521 },
+  'sqlserver_azure': { name: 'SQL Server (Azure)', type: 'SQL Server', icon: '🔷', host: 'azure.database.windows.net', port: 1433 }
+};
+
+function onSourceDbChange() {
+  const select = document.getElementById('sourceDbSelect');
+  const dbId = select.value;
+  const typeEl = document.getElementById('sourceDbType');
+  const infoEl = document.getElementById('sourceDbInfo');
+  
+  if (!dbId) {
+    typeEl.textContent = '—';
+    infoEl.innerHTML = '';
+    return;
+  }
+  
+  const db = dbTypeMap[dbId];
+  typeEl.textContent = db.type;
+  typeEl.style.color = db.type === 'PostgreSQL' ? '#00d68f' : db.type === 'MySQL' ? '#0094ff' : '#f5a623';
+  infoEl.innerHTML = `<div class="db-details">${db.icon} ${db.name}<br><span style="font-size:11px;color:var(--text3)">${db.host}:${db.port}</span></div>`;
+}
+
+function onDestDbChange() {
+  const select = document.getElementById('destDbSelect');
+  const dbId = select.value;
+  const typeEl = document.getElementById('destDbType');
+  const infoEl = document.getElementById('destDbInfo');
+  
+  if (!dbId) {
+    typeEl.textContent = '—';
+    infoEl.innerHTML = '';
+    return;
+  }
+  
+  const db = dbTypeMap[dbId];
+  typeEl.textContent = db.type;
+  typeEl.style.color = db.type === 'PostgreSQL' ? '#00d68f' : db.type === 'MySQL' ? '#0094ff' : '#f5a623';
+  infoEl.innerHTML = `<div class="db-details">${db.icon} ${db.name}<br><span style="font-size:11px;color:var(--text3)">${db.host}:${db.port}</span></div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
 //  HANDLE FILES — entry point
 // ═══════════════════════════════════════════════════════════
 async function handleFiles(files) {

@@ -1592,3 +1592,90 @@ input:focus-visible {
   background: var(--warn);
   color: #000;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   DATABASE SELECTION STYLES
+   ═══════════════════════════════════════════════════════════ */
+
+.db-section {
+  margin-bottom: 16px;
+}
+
+.db-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.db-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.db-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.db-selector .form-select {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.db-selector .form-select:hover {
+  border-color: var(--border2);
+  background: var(--surface2);
+}
+
+.db-selector .form-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0,214,143,0.2);
+}
+
+.db-type {
+  display: inline-block;
+  min-width: 70px;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 11px;
+  text-align: center;
+  color: var(--text3);
+}
+
+.db-info {
+  padding: 8px 12px;
+  background: var(--surface2);
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border);
+  margin-bottom: 0;
+}
+
+.db-details {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.6;
+}
+
+.db-separator {
+  text-align: center;
+  color: var(--text3);
+  font-size: 18px;
+  padding: 12px 0;
+  letter-spacing: 2px;
+}
