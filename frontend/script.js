@@ -234,16 +234,18 @@ async function sendSQLToBackend(sqlFiles) {
 
 // ── นำ backend result มาใส่ currentData ──────────────────
 function applyBackendTables(tables, unknown, byteAnomalies = {}) {
-  Object.entries(tables).forEach(([tableName, cols]) => {
+  Object.entries(tables).forEach(([tableKey, cols]) => {
     const fileName    = cols[0]?.file || 'unknown.sql';
-    const unknownCols = (unknown[tableName] || []).map(u => u.column_name);
-    const anomalyCols = (byteAnomalies[tableName] || []).map(a => a.column_name);
+    const isDuplicate = cols[0]?.is_duplicate || false;
+    const unknownCols = (unknown[tableKey] || []).map(u => u.column_name);
+    const anomalyCols = (byteAnomalies[tableKey] || []).map(a => a.column_name);
 
-    currentData[tableName] = {
+    currentData[tableKey] = {
       headers    : cols.map(c => c.column_name),
-      rows       : [],          // SQL = schema only ไม่มี data rows
+      rows       : [],
       fileName,
       fileType   : 'sql',
+      isDuplicate,
       backendCols: cols.map(c => ({
         ...c,
         isUnknown    : unknownCols.includes(c.column_name),
@@ -537,8 +539,8 @@ function buildTableCard(k) {
   // Data preview — ตรงกับข้อมูลที่ export จริง
   const previewCols = isSql ? MAP_HEADERS : t.headers;
   const previewSrc  = isSql ? toMappingRows(t.backendCols) : t.rows;
-  const previewRows = previewSrc.slice(0, 15);
-  const moreRows    = previewSrc.length - 15;
+  const previewRows = previewSrc;
+  const moreRows    = 0;
 
   const theadHtml = previewCols.map((h, idx) =>
     `<th class="${idx === 0 && isSql ? 'preview-th-num' : ''}" title="${h}">${h}</th>`).join('');
@@ -555,11 +557,15 @@ function buildTableCard(k) {
     ? `<span class="session-tag" title="session: ${sessionId}">🔗 mapped</span>` : '';
 
   return `
-  <div class="table-card">
+  <div class="table-card${t.isDuplicate ? ' is-duplicate' : ''}">
     <div class="table-card-header" onclick="openTableModal('${k}')" title="คลิกเพื่อดูตารางแบบเต็ม">
       <div class="table-card-icon">${isSql ? '🗃️' : '📊'}</div>
       <div style="min-width:0;flex:1">
-        <div class="table-card-name" title="${k}">${k} ${sessionTag}</div>
+        <div class="table-card-name" title="${k}">
+          ${k.includes('__') ? k.split('__')[0] : k}
+          ${sessionTag}
+          ${t.isDuplicate ? '<span class="dup-badge">⚠ DUPLICATE</span>' : ''}
+        </div>
         <div class="table-card-meta">
           <span>${t.headers.length}</span> cols ·
           ${isSql
@@ -582,7 +588,7 @@ function buildTableCard(k) {
         <tbody>${tbodyHtml || noDataHtml}</tbody>
       </table>
     </div>
-    ${moreRows > 0 ? `<div class="preview-more">+${moreRows.toLocaleString()} more rows</div>` : ''}
+
     <div class="table-card-actions">
       ${isSql ? `
       <button class="btn-card-dl xlsx" onclick="downloadTableXLSX('${k}')">⬇ Mapping XLSX</button>
@@ -595,24 +601,34 @@ function buildTableCard(k) {
 }
 
 function buildPillsHTML(backendCols) {
-  const show = backendCols.slice(0, 6);
-  const more = backendCols.length - 6;
-  return show.map(c => {
+  // แสดงเฉพาะ PK / FK / Error (unknown หรือ byte anomaly)
+  const pkCols    = backendCols.filter(c => c.is_pk);
+  const fkCols    = backendCols.filter(c => c.fk && !c.is_pk);
+  const errorCols = backendCols.filter(c => (c.isUnknown || c.isByteAnomaly) && !c.is_pk && !c.fk);
+
+  if (!pkCols.length && !fkCols.length && !errorCols.length) {
+    return `<span class="bcol-empty-hint">ไม่มี PK / FK / Error</span>`;
+  }
+
+  function pill(c, tag) {
     const cls = c.isByteAnomaly ? ' byte-anomaly'
               : c.isUnknown     ? ' unknown'
               : '';
-    const tooltip = c.isByteAnomaly
-      ? `⚠️ byte anomaly: source=${c.source_sql_type}`
-      : `source: ${c.source_sql_type||''}`;
-    const badge = c.isByteAnomaly ? '<span class="anomaly-pill-badge">⚠️byte</span>' : '';
-    return `
-    <span class="bcol-pill${cls}" title="${tooltip}">
-      ${c.column_name}<em>${c.final_type || c.logical_type || '?'}</em>
-      ${badge}
-      <span class="nullable-badge ${c.nullable === 'NOT NULL' ? 'not-null' : 'null'}">${c.nullable || 'NULL'}</span>
-    </span>`;
-  }).join('') +
-    (more > 0 ? `<span class="bcol-more">+${more} more</span>` : '');
+    const tooltip = c.isByteAnomaly ? `⚠️ byte anomaly: source=${c.source_sql_type}`
+                  : c.fk            ? `FK → ${c.fk.ref_table}.${c.fk.ref_column || '?'}`
+                  : `source: ${c.source_sql_type || ''}`;
+    const errorBadge = c.isByteAnomaly ? '<span class="anomaly-pill-badge">⚠️byte</span>'
+                     : c.isUnknown     ? '<span class="anomaly-pill-badge">?unk</span>'
+                     : '';
+    return `<span class="bcol-pill${cls}" title="${tooltip}">
+      <span class="pill-tag pill-tag-${tag}">${tag}</span>${c.column_name}<em>${c.final_type || c.logical_type || '?'}</em>${errorBadge}</span>`;
+  }
+
+  return [
+    ...pkCols.map(c    => pill(c, 'PK')),
+    ...fkCols.map(c    => pill(c, 'FK')),
+    ...errorCols.map(c => pill(c, 'ERR')),
+  ].join('');
 }
 
 // ── Unknown type warnings ─────────────────────────────────
@@ -851,7 +867,7 @@ function openTableModal(key) {
       <div class="table-modal-header">
         <div class="table-modal-icon">${isSql ? '🗃️' : '📊'}</div>
         <div style="min-width:0;flex:1">
-          <div class="table-modal-title">${key}</div>
+          <div class="table-modal-title">${key.includes('__') ? key.split('__')[0] : key}${currentData[key]?.isDuplicate ? ' <span class="dup-badge">⚠ DUPLICATE</span>' : ''}</div>
           <div class="table-modal-meta">${cols.length} cols · ${src.length.toLocaleString()} rows · ${t.fileName}</div>
         </div>
         <div class="table-modal-search">

@@ -180,6 +180,7 @@ async def convert(request: Request, files: List[UploadFile] = File(...)):
 
         for table, table_rows in parsed_by_table.items():
             # ── duplicate table detection (per-table, not per-column) ──
+            is_duplicate = False
             if table in table_source:
                 dup = duplicate_tables.setdefault(table, {
                     "first_file":      table_source[table],
@@ -189,16 +190,19 @@ async def convert(request: Request, files: List[UploadFile] = File(...)):
                     dup["duplicate_files"].append(filename)
                     logger.warning(
                         f"⚠️  Duplicate table '{table}' in '{filename}' "
-                        f"(first defined in '{table_source[table]}') — skipped"
+                        f"(first defined in '{table_source[table]}')"
                     )
-                continue  # ข้ามทั้งตาราง
+                is_duplicate = True
+                # ใช้ชื่อ key ใหม่เพื่อไม่ให้ทับข้อมูลเดิม เช่น hremployee_profile__02.sql
+                table_key = f"{table}__{filename}"
             else:
                 table_source[table] = filename
+                table_key = table
 
             for row in table_rows:
                 res = converter.convert(row["type"])
 
-                tables.setdefault(table, []).append({
+                col_entry = {
                     "column_name":     row["column"],
                     "file":            filename,
                     "raw_type":        res.get("raw"),
@@ -208,10 +212,12 @@ async def convert(request: Request, files: List[UploadFile] = File(...)):
                     "nullable":        "NOT NULL" if row.get("nullable") == "NOT NULL" else "NULL",
                     "is_pk":           row.get("is_pk", False),
                     "fk":              row.get("fk"),
-                })
+                    "is_duplicate":    is_duplicate,
+                }
+                tables.setdefault(table_key, []).append(col_entry)
 
                 if res.get("status") != "ok":
-                    unknown.setdefault(table, []).append({
+                    unknown.setdefault(table_key, []).append({
                         "column_name": row["column"],
                         "file":        filename,
                         "reason":      res.get("reason"),
@@ -219,7 +225,7 @@ async def convert(request: Request, files: List[UploadFile] = File(...)):
 
                 # ── byte anomaly warning ────────────────────────────
                 if res.get("byte_anomaly"):
-                    byte_anomalies.setdefault(table, []).append({
+                    byte_anomalies.setdefault(table_key, []).append({
                         "column_name": row["column"],
                         "file":        filename,
                         "source_type": row["type"],

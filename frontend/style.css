@@ -1679,3 +1679,72 @@ input:focus-visible {
   padding: 12px 0;
   letter-spacing: 2px;
 }
+
+/* ── Pill tag badges (PK / FK / ERR) ─────────────────────── */
+.pill-tag {
+  font-family: var(--mono);
+  font-size: 0.7em;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 4px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.pill-tag-PK {
+  background: rgba(255, 217, 102, 0.25);
+  color: #c8960a;
+  border: 1px solid rgba(255, 217, 102, 0.5);
+}
+
+.pill-tag-FK {
+  background: rgba(0, 148, 255, 0.15);
+  color: var(--accent2);
+  border: 1px solid rgba(0, 148, 255, 0.35);
+}
+
+.pill-tag-ERR {
+  background: rgba(255, 77, 109, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(255, 77, 109, 0.35);
+}
+
+.bcol-empty-hint {
+  font-family: var(--mono);
+  font-size: 0.72em;
+  color: var(--text3);
+  padding: 4px 8px;
+  font-style: italic;
+}
+
+/* ── Duplicate table badge ───────────────────────────────── */
+.dup-badge {
+  font-family: var(--mono);
+  font-size: 0.62em;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(245, 166, 35, 0.18);
+  color: var(--warn);
+  border: 1px solid rgba(245, 166, 35, 0.5);
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  animation: pulse-warn 2.5s ease-in-out infinite;
+}
+
+@keyframes pulse-warn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); }
+  50%       { box-shadow: 0 0 0 3px rgba(245,166,35,0.2); }
+}
+
+/* Card border highlight for duplicate tables */
+.table-card.is-duplicate {
+  border-color: rgba(245, 166, 35, 0.5);
+  background: linear-gradient(
+    180deg,
+    rgba(245, 166, 35, 0.04) 0%,
+    var(--surface) 60px
+  );
+}

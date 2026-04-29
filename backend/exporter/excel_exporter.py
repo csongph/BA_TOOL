@@ -198,7 +198,7 @@ def _write_avro_section(ws, table_name: str, columns: list,
 
     _merge(ws, start_row, c1, c2)
     _s(ws, start_row, c1,
-       f"Topic:    UAT_EEAS_RAW_dbWorkforce_{table_name}",
+       f"TABLE:    {table_name}",
        bg=_C["topic_bg"], bold=True, align_h="left")
     start_row += 1
 
@@ -354,7 +354,7 @@ def _build_csv_rows(table_name: str, columns: list, anomalies: list | None = Non
     rows.append([])  # blank gap
 
     # Confluent section (Partition Key จาก is_pk)
-    rows.append([f"Topic:    UAT_EEAS_RAW_dbWorkforce_{table_name}"])
+    rows.append([f"TABLE:    {table_name}"])
     rows.append(["Confluent (AVRO)"])
     rows.append(["Detail Section"])
     rows.append(["NO.", "Name", "Partition Key", "Raw Format type", "Logical Format type", "direct move / logic", "Description", "Possible Value"])
