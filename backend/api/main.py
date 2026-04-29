@@ -142,6 +142,8 @@ async def convert(request: Request, files: List[UploadFile] = File(...)):
     tables: dict        = {}
     unknown: dict       = {}
     byte_anomalies: dict = {}   # { table: [{ column, file, source_type, raw_type, detail }] }
+    table_source: dict  = {}    # table → filename ที่ define ครั้งแรก
+    duplicate_tables: dict = {} # table → { first_file, duplicate_files: [...] }
 
     for file in files:
         # [FIX-Security] ตรวจ extension จาก filename จริง (ไม่เชื่อ content-type)
@@ -171,38 +173,59 @@ async def convert(request: Request, files: List[UploadFile] = File(...)):
             logger.warning(f"  ⚠️ No table found in: {filename}")
             continue
 
+        # ── group parsed rows by table ──────────────────────────
+        parsed_by_table: dict = {}
         for row in parsed:
-            res   = converter.convert(row["type"])
-            table = row["table"]
+            parsed_by_table.setdefault(row["table"], []).append(row)
 
-            tables.setdefault(table, []).append({
-                "column_name":     row["column"],
-                "file":            filename,
-                "raw_type":        res.get("raw"),
-                "logical_type":    res.get("logical"),
-                "final_type":      res.get("final") if res.get("status") == "ok" else row["type"],
-                "source_sql_type": row["type"],
-                "nullable":        "NOT NULL" if row.get("nullable") == "NOT NULL" else "NULL",
-                "is_pk":           row.get("is_pk", False),
-                "fk":              row.get("fk"),
-            })
+        for table, table_rows in parsed_by_table.items():
+            # ── duplicate table detection (per-table, not per-column) ──
+            if table in table_source:
+                dup = duplicate_tables.setdefault(table, {
+                    "first_file":      table_source[table],
+                    "duplicate_files": [],
+                })
+                if filename not in dup["duplicate_files"]:
+                    dup["duplicate_files"].append(filename)
+                    logger.warning(
+                        f"⚠️  Duplicate table '{table}' in '{filename}' "
+                        f"(first defined in '{table_source[table]}') — skipped"
+                    )
+                continue  # ข้ามทั้งตาราง
+            else:
+                table_source[table] = filename
 
-            if res.get("status") != "ok":
-                unknown.setdefault(table, []).append({
-                    "column_name": row["column"],
-                    "file":        filename,
-                    "reason":      res.get("reason"),
+            for row in table_rows:
+                res = converter.convert(row["type"])
+
+                tables.setdefault(table, []).append({
+                    "column_name":     row["column"],
+                    "file":            filename,
+                    "raw_type":        res.get("raw"),
+                    "logical_type":    res.get("logical"),
+                    "final_type":      res.get("final") if res.get("status") == "ok" else row["type"],
+                    "source_sql_type": row["type"],
+                    "nullable":        "NOT NULL" if row.get("nullable") == "NOT NULL" else "NULL",
+                    "is_pk":           row.get("is_pk", False),
+                    "fk":              row.get("fk"),
                 })
 
-            # ── byte anomaly warning ────────────────────────────
-            if res.get("byte_anomaly"):
-                byte_anomalies.setdefault(table, []).append({
-                    "column_name": row["column"],
-                    "file":        filename,
-                    "source_type": row["type"],
-                    "raw_type":    res.get("raw"),
-                    "detail":      res.get("byte_anomaly_detail"),
-                })
+                if res.get("status") != "ok":
+                    unknown.setdefault(table, []).append({
+                        "column_name": row["column"],
+                        "file":        filename,
+                        "reason":      res.get("reason"),
+                    })
+
+                # ── byte anomaly warning ────────────────────────────
+                if res.get("byte_anomaly"):
+                    byte_anomalies.setdefault(table, []).append({
+                        "column_name": row["column"],
+                        "file":        filename,
+                        "source_type": row["type"],
+                        "raw_type":    res.get("raw"),
+                        "detail":      res.get("byte_anomaly_detail"),
+                    })
 
     if not tables:
         raise HTTPException(400, "No table found in any uploaded file")
@@ -220,7 +243,8 @@ async def convert(request: Request, files: List[UploadFile] = File(...)):
 
     session_id = str(uuid.uuid4())
     result_cache[session_id] = {
-        "data":       {"tables": tables, "unknown": unknown, "fk_errors": fk_errors, "byte_anomalies": byte_anomalies},
+        "data":       {"tables": tables, "unknown": unknown, "fk_errors": fk_errors,
+                       "byte_anomalies": byte_anomalies, "duplicate_tables": duplicate_tables},
         "created_at": datetime.now(),
     }
 
@@ -230,13 +254,18 @@ async def convert(request: Request, files: List[UploadFile] = File(...)):
     if anomaly_count:
         logger.warning(f"⚠️  Byte anomalies detected: {anomaly_count} column(s)")
 
+    dup_count = len(duplicate_tables)
+    if dup_count:
+        logger.warning(f"🚫 Duplicate tables skipped: {dup_count} table(s) — {list(duplicate_tables.keys())}")
+
     return {
-        "session_id":    session_id,
-        "file_count":    len(files),
-        "tables":        tables,
-        "unknown":       unknown,
-        "fk_errors":     fk_errors,
-        "byte_anomalies": byte_anomalies,
+        "session_id":       session_id,
+        "file_count":       len(files),
+        "tables":           tables,
+        "unknown":          unknown,
+        "fk_errors":        fk_errors,
+        "byte_anomalies":   byte_anomalies,
+        "duplicate_tables": duplicate_tables,
     }
 
 

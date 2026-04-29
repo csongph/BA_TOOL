@@ -29,10 +29,17 @@ _C = {
     "warn_border": "FF4D6D",
 }
 
-# Layout: Raw (cols 1-8) | Gap (cols 9-10) | AVRO (cols 11-18)
+# Single-table layout: Raw (cols 1-8) | Gap (cols 9-10) | AVRO (cols 11-18)
 _RAW_END    = 8
 _AVRO_START = 11
 _AVRO_END   = 18
+
+# Multi-table horizontal layout constants
+_RAW_COLS   = 8    # columns per Raw section
+_AVRO_COLS  = 8    # columns per AVRO section
+_INNER_GAP  = 2    # gap between Raw and AVRO within same table
+_TABLE_GAP  = 2    # gap between different tables
+_BLOCK      = _RAW_COLS + _INNER_GAP + _AVRO_COLS + _TABLE_GAP  # = 20 cols per table
 
 
 def _s(ws, row, col, value, bg=None, fg="000000", bold=False,
@@ -61,16 +68,17 @@ def _merge(ws, row, c1, c2):
         ws.merge_cells(start_row=row, start_column=c1, end_row=row, end_column=c2)
 
 
-def _write_warning_section(ws, anomalies: list, start_row: int) -> int:
+def _write_warning_section(ws, anomalies: list, start_row: int,
+                            c2: int = _AVRO_END) -> int:
     """
     เขียน WARNING section รวม ต่อท้าย sheet สำหรับ byte anomaly
     anomalies = [{ table, column_name, source_type, raw_type, detail, file }, ...]
-    ครอบคลุมความกว้างทั้งหมด (cols 1-18)
+    c2 = last column to span (dynamic for multi-table horizontal layout)
     """
     if not anomalies:
         return start_row
 
-    c1, c2 = 1, _AVRO_END
+    c1 = 1
 
     # ── blank gap ─────────────────────────────────────────
     start_row += 1
@@ -125,12 +133,13 @@ def _write_warning_section(ws, anomalies: list, start_row: int) -> int:
     return start_row
 
 
-def _write_raw_section(ws, table_name: str, columns: list, start_row: int) -> int:
+def _write_raw_section(ws, table_name: str, columns: list,
+                       start_row: int, start_col: int = 1) -> int:
     """
-    Section 1 — Raw (SQL Server) เขียนที่ cols 1-8
+    Section 1 — Raw (SQL Server) เขียนที่ cols start_col .. start_col+7
     NO. | Name | PK or Unique | Max Length | Format | Nullable | Description | Possible Value
     """
-    c1, c2 = 1, _RAW_END
+    c1, c2 = start_col, start_col + 7
 
     _merge(ws, start_row, c1, c2)
     _s(ws, start_row, c1, f"TABLE:    {table_name}",
@@ -151,7 +160,7 @@ def _write_raw_section(ws, table_name: str, columns: list, start_row: int) -> in
         ["NO.", "Name", "PK or Unique", "Max Length",
          "Format", "Nullable", "Description", "Possible Value"], 1
     ):
-        _s(ws, start_row, ci, h,
+        _s(ws, start_row, c1 + ci - 1, h,
            bg=_C["col_hdr_bg"], fg=_C["col_hdr_fg"], bold=True)
     start_row += 1
 
@@ -166,26 +175,26 @@ def _write_raw_section(ws, table_name: str, columns: list, start_row: int) -> in
 
         base_type = re.split(r"[\(\s]", sql_type.lower().strip())[0]
 
-        _s(ws, r, 1, i,                          bg=bg)
-        _s(ws, r, 2, col.get("column_name", ""), bg=bg, align_h="left")
-        _s(ws, r, 3, is_pk,                      bg=_C["pk_bg"] if is_pk == "Y" else bg)
-        _s(ws, r, 4, max_len,                    bg=bg)
-        _s(ws, r, 5, base_type,                  bg=bg)
-        _s(ws, r, 6, col.get("nullable", ""),    bg=bg)
-        _s(ws, r, 7, "",                         bg=bg, align_h="left", wrap=True)
-        _s(ws, r, 8, "",                         bg=bg, align_h="left", wrap=True)
+        _s(ws, r, c1+0, i,                          bg=bg)
+        _s(ws, r, c1+1, col.get("column_name", ""), bg=bg, align_h="left")
+        _s(ws, r, c1+2, is_pk,                      bg=_C["pk_bg"] if is_pk == "Y" else bg)
+        _s(ws, r, c1+3, max_len,                    bg=bg)
+        _s(ws, r, c1+4, base_type,                  bg=bg)
+        _s(ws, r, c1+5, col.get("nullable", ""),    bg=bg)
+        _s(ws, r, c1+6, "",                         bg=bg, align_h="left", wrap=True)
+        _s(ws, r, c1+7, "",                         bg=bg, align_h="left", wrap=True)
         start_row += 1
 
     return start_row
 
 
-def _write_avro_section(ws, table_name: str, columns: list, start_row: int) -> int:
+def _write_avro_section(ws, table_name: str, columns: list,
+                        start_row: int, start_col: int = _AVRO_START) -> int:
     """
-    Section 2 — Confluent (AVRO) เขียนที่ cols 11-18 (ข้างๆ Raw)
+    Section 2 — Confluent (AVRO) เขียนที่ cols start_col .. start_col+7
     NO. | Name | Partition Key | Raw Format type | Logical Format type | direct move / logic | Description | Possible Value
-    Partition Key ดึงจาก is_pk อัตโนมัติ
     """
-    c1, c2 = _AVRO_START, _AVRO_END
+    c1, c2 = start_col, start_col + 7
 
     _merge(ws, start_row, c1, c2)
     _s(ws, start_row, c1,
@@ -229,57 +238,75 @@ def _write_avro_section(ws, table_name: str, columns: list, start_row: int) -> i
     return start_row
 
 
-def _set_col_widths(ws):
-    widths = {
-        # Raw (A-H)
-        1: 8,  2: 22, 3: 14, 4: 12, 5: 16, 6: 12, 7: 40, 8: 40,
-        # Gap (I-J)
-        9: 4,  10: 4,
-        # AVRO (K-R)
-        11: 8, 12: 22, 13: 14, 14: 16, 15: 20, 16: 16, 17: 40, 18: 40,
-    }
-    for col_num, w in widths.items():
-        ws.column_dimensions[get_column_letter(col_num)].width = w
+def _set_col_widths(ws, col_offsets: list | None = None):
+    """
+    ตั้งความกว้าง column สำหรับทุก table block
+    col_offsets = list of start_col ของแต่ละ table (เช่น [1, 21, 41])
+    """
+    if col_offsets is None:
+        col_offsets = [1]
+
+    raw_widths  = [8, 22, 14, 12, 16, 12, 40, 40]
+    avro_widths = [8, 22, 14, 16, 20, 16, 40, 40]
+    gap_w = 4
+
+    for base in col_offsets:
+        # Raw cols (base .. base+7)
+        for i, w in enumerate(raw_widths):
+            ws.column_dimensions[get_column_letter(base + i)].width = w
+        # Inner gap (base+8, base+9)
+        ws.column_dimensions[get_column_letter(base + 8)].width = gap_w
+        ws.column_dimensions[get_column_letter(base + 9)].width = gap_w
+        # AVRO cols (base+10 .. base+17)
+        for i, w in enumerate(avro_widths):
+            ws.column_dimensions[get_column_letter(base + 10 + i)].width = w
+        # Outer gap between tables (base+18, base+19)
+        ws.column_dimensions[get_column_letter(base + 18)].width = gap_w
+        ws.column_dimensions[get_column_letter(base + 19)].width = gap_w
 
 
 def _build_sheet(ws, table_name: str, columns: list, anomalies: list | None = None):
     """Single-table sheet: Raw (cols 1-8) และ AVRO (cols 11-18) เขียนพร้อมกันที่ row 1"""
-    end_row = _write_raw_section(ws, table_name, columns, start_row=1)
-    _write_avro_section(ws, table_name, columns, start_row=1)
+    end_row = _write_raw_section(ws, table_name, columns, start_row=1, start_col=1)
+    _write_avro_section(ws, table_name, columns, start_row=1, start_col=_AVRO_START)
 
     if anomalies:
         tagged = [{**a, "table": table_name} for a in anomalies]
-        _write_warning_section(ws, tagged, start_row=end_row)
+        _write_warning_section(ws, tagged, start_row=end_row, c2=_AVRO_END)
 
-    _set_col_widths(ws)
+    _set_col_widths(ws, col_offsets=[1])
 
 
 def _build_multi_sheet(ws, tables: dict, byte_anomalies: dict | None = None):
     """
-    ทุกตารางอยู่ใน sheet เดียว เรียงลงมา
+    ทุกตารางอยู่ใน sheet เดียว เรียงแนวตั้ง (ลงมาเรื่อยๆ)
+    แต่ละตาราง: Raw (cols 1-8) ซ้าย | gap | AVRO (cols 11-18) ขวา
     WARNING รวมกันทั้งหมดไว้ด้านล่างสุด พร้อมชื่อตาราง
     """
-    current_row = 1
-    all_anomalies = []
+    current_row   = 1
+    all_anomalies: list = []
 
     for table_name, columns in tables.items():
-        _write_raw_section(ws, table_name, columns, start_row=current_row)
-        end_row = _write_avro_section(ws, table_name, columns, start_row=current_row)
-        current_row = end_row + 2   # 2-row gap ระหว่างตาราง
+        raw_end  = _write_raw_section(ws, table_name, columns,
+                                      start_row=current_row, start_col=1)
+        avro_end = _write_avro_section(ws, table_name, columns,
+                                       start_row=current_row, start_col=_AVRO_START)
+        current_row = max(raw_end, avro_end) + 2   # 2-row gap ระหว่างตาราง
 
         for a in (byte_anomalies or {}).get(table_name) or []:
             all_anomalies.append({**a, "table": table_name})
 
     if all_anomalies:
-        _write_warning_section(ws, all_anomalies, start_row=current_row)
+        _write_warning_section(ws, all_anomalies,
+                               start_row=current_row - 1, c2=_AVRO_END)
 
-    _set_col_widths(ws)
+    _set_col_widths(ws, col_offsets=[1])
 
 
 # ── Public API ────────────────────────────────────────────────────
 
 def export_confluent_xlsx(tables: dict, byte_anomalies: dict | None = None) -> io.BytesIO:
-    """ทุกตารางใน sheet เดียว เรียงลงมา WARNING รวมด้านล่าง"""
+    """ทุกตารางใน sheet เดียว เรียงแนวนอน WARNING รวมด้านล่าง"""
     wb = Workbook()
     ws = wb.active
     ws.title = "Data Dictionary"
