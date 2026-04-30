@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import List
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
@@ -315,10 +315,12 @@ def delete_session(session_id: str):
 # ── Export endpoints ──────────────────────────────────────
 
 @app.get("/export/{session_id}/xlsx")
-def export_all(session_id: str):
+def export_all(session_id: str, tables: List[str] = Query(default=None)):
     data           = get_cached_data(session_id)
-    byte_anomalies = data.get("byte_anomalies", {})
-    buf  = export_confluent_xlsx(data["tables"], byte_anomalies=byte_anomalies)
+    all_tables     = data["tables"]
+    selected       = {k: v for k, v in all_tables.items() if tables is None or k in tables}
+    byte_anomalies = {k: v for k, v in data.get("byte_anomalies", {}).items() if k in selected}
+    buf  = export_confluent_xlsx(selected, byte_anomalies=byte_anomalies)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -343,10 +345,12 @@ def export_one(session_id: str, table_name: str):
 
 
 @app.get("/export/{session_id}/csv")
-def export_all_csv_endpoint(session_id: str):
+def export_all_csv_endpoint(session_id: str, tables: List[str] = Query(default=None)):
     data           = get_cached_data(session_id)
-    byte_anomalies = data.get("byte_anomalies", {})
-    buf  = export_all_csv(data["tables"], byte_anomalies=byte_anomalies)
+    all_tables     = data["tables"]
+    selected       = {k: v for k, v in all_tables.items() if tables is None or k in tables}
+    byte_anomalies = {k: v for k, v in data.get("byte_anomalies", {}).items() if k in selected}
+    buf  = export_all_csv(selected, byte_anomalies=byte_anomalies)
     return StreamingResponse(
         buf,
         media_type="text/csv; charset=utf-8-sig",

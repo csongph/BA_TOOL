@@ -1748,3 +1748,122 @@ input:focus-visible {
     var(--surface) 60px
   );
 }
+
+/* Duplicate banner row on top of preview table thead */
+.preview-th-dup {
+  background: rgba(245, 166, 35, 0.15);
+  color: var(--warn);
+  font-family: var(--mono);
+  font-size: 0.7em;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.08em;
+  padding: 5px 10px;
+  border-bottom: 1px solid rgba(245, 166, 35, 0.3);
+  text-transform: uppercase;
+}
+/* ── Table Selector Modal ─────────────────────────────── */
+.tsel-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.tsel-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 100%; max-width: 680px;
+  max-height: 85vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 24px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.5);
+}
+.tsel-modal-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.tsel-modal-title {
+  font-size: 16px; font-weight: 600; letter-spacing: -.01em;
+}
+.tsel-counter {
+  font-size: 12px; color: var(--text3); margin-top: 4px;
+  font-family: var(--mono);
+}
+.tsel-btn-all {
+  font-family: inherit; font-size: 12px;
+  padding: 5px 12px; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text3); cursor: pointer; transition: color .12s, border-color .12s;
+}
+.tsel-btn-all:hover { color: var(--text); border-color: var(--text3); }
+
+.tsel-chip-grid {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  min-height: 48px; padding: 14px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+}
+.tsel-empty { font-size: 13px; color: var(--text3); align-self: center; }
+.tsel-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 6px 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 7px; font-size: 12px; font-family: var(--mono);
+  animation: chipIn .15s ease both;
+}
+.tsel-chip.is-dup { border-color: rgba(245,166,35,.4); background: rgba(245,166,35,.06); }
+.tsel-dup-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: .06em;
+  background: var(--warn); color: #000; border-radius: 3px; padding: 1px 4px;
+}
+.tsel-chip-name { color: var(--text); }
+.tsel-chip-remove {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text3); font-size: 13px; line-height: 1;
+  padding: 0 2px; border-radius: 3px; transition: color .1s, background .1s;
+}
+.tsel-chip-remove:hover { color: #ef4444; background: rgba(239,68,68,.12); }
+
+.tsel-removed-label {
+  font-size: 11px; font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: .12em; color: var(--text3);
+}
+.tsel-removed-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.tsel-removed-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 10px;
+  border: 1px dashed var(--border); border-radius: 6px;
+  font-size: 11px; font-family: var(--mono); color: var(--text3);
+  animation: chipIn .15s ease both;
+}
+.tsel-restore-btn {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text3); font-size: 13px; transition: color .1s;
+}
+.tsel-restore-btn:hover { color: var(--accent); }
+
+.tsel-modal-footer {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding-top: 4px; border-top: 1px solid var(--border);
+}
+.tsel-btn-cancel {
+  font-family: inherit; font-size: 13px; padding: 9px 20px;
+  border-radius: 7px; border: 1px solid var(--border);
+  background: transparent; color: var(--text3); cursor: pointer;
+  transition: color .12s;
+}
+.tsel-btn-cancel:hover { color: var(--text); }
+.tsel-btn-export {
+  font-family: inherit; font-size: 13px; font-weight: 500;
+  padding: 9px 24px; border-radius: 7px; border: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent2, #6366f1));
+  color: #fff; cursor: pointer; transition: opacity .12s;
+}
+.tsel-btn-export:hover { opacity: .88; }
+.tsel-btn-export:disabled { opacity: .35; cursor: default; }
+
+@keyframes chipIn {
+  from { opacity: 0; transform: scale(.85); }
+  to   { opacity: 1; transform: scale(1); }
+}

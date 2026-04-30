@@ -27,19 +27,20 @@ _C = {
     "warn_hdr_bg": "FF4D6D",   # red header bar
     "warn_hdr_fg": "FFFFFF",
     "warn_border": "FF4D6D",
+    "dup_bg":      "FFC7CE",   # duplicate table highlight
 }
 
-# Single-table layout: Raw (cols 1-8) | Gap (cols 9-10) | AVRO (cols 11-18)
+# Single-table layout: Raw (cols 1-8) | Gap (cols 9-10) | AVRO (cols 11-19)
 _RAW_END    = 8
 _AVRO_START = 11
-_AVRO_END   = 18
+_AVRO_END   = 19
 
 # Multi-table horizontal layout constants
 _RAW_COLS   = 8    # columns per Raw section
-_AVRO_COLS  = 8    # columns per AVRO section
+_AVRO_COLS  = 9    # columns per AVRO section (9 cols now)
 _INNER_GAP  = 2    # gap between Raw and AVRO within same table
 _TABLE_GAP  = 2    # gap between different tables
-_BLOCK      = _RAW_COLS + _INNER_GAP + _AVRO_COLS + _TABLE_GAP  # = 20 cols per table
+_BLOCK      = _RAW_COLS + _INNER_GAP + _AVRO_COLS + _TABLE_GAP  # = 21 cols per table
 
 
 def _s(ws, row, col, value, bg=None, fg="000000", bold=False,
@@ -134,7 +135,7 @@ def _write_warning_section(ws, anomalies: list, start_row: int,
 
 
 def _write_raw_section(ws, table_name: str, columns: list,
-                       start_row: int, start_col: int = 1) -> int:
+                       start_row: int, start_col: int = 1, is_dup: bool = False) -> int:
     """
     Section 1 — Raw (SQL Server) เขียนที่ cols start_col .. start_col+7
     NO. | Name | PK or Unique | Max Length | Format | Nullable | Description | Possible Value
@@ -142,12 +143,12 @@ def _write_raw_section(ws, table_name: str, columns: list,
     c1, c2 = start_col, start_col + 7
 
     _merge(ws, start_row, c1, c2)
-    _s(ws, start_row, c1, f"TABLE:    {table_name}",
-       bg=_C["topic_bg"], bold=True, align_h="left")
+    _s(ws, start_row, c1, f"TABLE:    {table_name}" + (" [DUPLICATED]" if is_dup else ""),
+       bg=_C["dup_bg"] if is_dup else _C["topic_bg"], bold=True, align_h="left")
     start_row += 1
 
     _merge(ws, start_row, c1, c2)
-    _s(ws, start_row, c1, "Raw (SQL Server)",
+    _s(ws, start_row, c1, "New [SQL Server]",
        bg=_C["raw_bg"], bold=True, align_h="left")
     start_row += 1
 
@@ -189,21 +190,21 @@ def _write_raw_section(ws, table_name: str, columns: list,
 
 
 def _write_avro_section(ws, table_name: str, columns: list,
-                        start_row: int, start_col: int = _AVRO_START) -> int:
+                        start_row: int, start_col: int = _AVRO_START, is_dup: bool = False) -> int:
     """
-    Section 2 — Confluent (AVRO) เขียนที่ cols start_col .. start_col+7
-    NO. | Name | Partition Key | Raw Format type | Logical Format type | direct move / logic | Description | Possible Value
+    Section 2 — Confluent (AVRO) เขียนที่ cols start_col .. start_col+8 (9 cols)
+    NO. | Name | Position | Kafka Type | Format | Intype format | Inject move/if | Description | Possible Value
     """
-    c1, c2 = start_col, start_col + 7
+    c1, c2 = start_col, start_col + 8   # 9 columns now
 
     _merge(ws, start_row, c1, c2)
     _s(ws, start_row, c1,
-       f"TABLE:    {table_name}",
-       bg=_C["topic_bg"], bold=True, align_h="left")
+       f"Topic:    {table_name}" + (" [DUPLICATED]" if is_dup else ""),
+       bg=_C["dup_bg"] if is_dup else _C["topic_bg"], bold=True, align_h="left")
     start_row += 1
 
     _merge(ws, start_row, c1, c2)
-    _s(ws, start_row, c1, "Confluent (AVRO)",
+    _s(ws, start_row, c1, "Content [AVRO]",
        bg=_C["avro_bg"], bold=True, align_h="left")
     start_row += 1
 
@@ -213,11 +214,15 @@ def _write_avro_section(ws, table_name: str, columns: list,
     start_row += 1
 
     for ci, h in enumerate(
-        ["NO.", "Name", "Partition Key", "Raw Format type",
-         "Logical Format type", "direct move / logic", "Description", "Possible Value"], 1
+        ["NO.", "Name", "Partition Key",
+         "Raw Format type", "Logical Format type", "direct move / logic",
+         "Description", "Possible Value"], 1
     ):
         _s(ws, start_row, c1 + ci - 1, h,
            bg=_C["col_hdr_bg"], fg=_C["col_hdr_fg"], bold=True)
+    # 9th col header (blank, padding to maintain width)
+    _s(ws, start_row, c1 + 8, "",
+       bg=_C["col_hdr_bg"], fg=_C["col_hdr_fg"], bold=True)
     start_row += 1
 
     for i, col in enumerate(columns, 1):
@@ -233,36 +238,32 @@ def _write_avro_section(ws, table_name: str, columns: list,
         _s(ws, r, c1+5, "Direct move",                  bg=bg)
         _s(ws, r, c1+6, "",                             bg=bg, align_h="left", wrap=True)
         _s(ws, r, c1+7, "",                             bg=bg, align_h="left", wrap=True)
+        _s(ws, r, c1+8, "",                             bg=bg, align_h="left", wrap=True)
         start_row += 1
 
     return start_row
 
 
 def _set_col_widths(ws, col_offsets: list | None = None):
-    """
-    ตั้งความกว้าง column สำหรับทุก table block
-    col_offsets = list of start_col ของแต่ละ table (เช่น [1, 21, 41])
-    """
     if col_offsets is None:
         col_offsets = [1]
 
     raw_widths  = [8, 22, 14, 12, 16, 12, 40, 40]
-    avro_widths = [8, 22, 14, 16, 20, 16, 40, 40]
+    avro_widths = [8, 22, 12, 16, 18, 18, 18, 40, 40]  # 9 cols
     gap_w = 4
 
     for base in col_offsets:
-        # Raw cols (base .. base+7)
         for i, w in enumerate(raw_widths):
             ws.column_dimensions[get_column_letter(base + i)].width = w
         # Inner gap (base+8, base+9)
         ws.column_dimensions[get_column_letter(base + 8)].width = gap_w
         ws.column_dimensions[get_column_letter(base + 9)].width = gap_w
-        # AVRO cols (base+10 .. base+17)
+        # AVRO cols (base+10 .. base+18) — 9 cols
         for i, w in enumerate(avro_widths):
             ws.column_dimensions[get_column_letter(base + 10 + i)].width = w
-        # Outer gap between tables (base+18, base+19)
-        ws.column_dimensions[get_column_letter(base + 18)].width = gap_w
+        # Outer gap between tables (base+19, base+20)
         ws.column_dimensions[get_column_letter(base + 19)].width = gap_w
+        ws.column_dimensions[get_column_letter(base + 20)].width = gap_w
 
 
 def _build_sheet(ws, table_name: str, columns: list, anomalies: list | None = None):
@@ -283,14 +284,21 @@ def _build_multi_sheet(ws, tables: dict, byte_anomalies: dict | None = None):
     แต่ละตาราง: Raw (cols 1-8) ซ้าย | gap | AVRO (cols 11-18) ขวา
     WARNING รวมกันทั้งหมดไว้ด้านล่างสุด พร้อมชื่อตาราง
     """
+    from collections import Counter
+    _col_sig = {n: frozenset(c.get("column_name", "") for c in cols)
+                for n, cols in tables.items()}
+    _sig_count = Counter(_col_sig.values())
+    _dup_tables = {n for n, sig in _col_sig.items() if _sig_count[sig] > 1}
+
     current_row   = 1
     all_anomalies: list = []
 
     for table_name, columns in tables.items():
+        _is_dup = table_name in _dup_tables
         raw_end  = _write_raw_section(ws, table_name, columns,
-                                      start_row=current_row, start_col=1)
+                                      start_row=current_row, start_col=1, is_dup=_is_dup)
         avro_end = _write_avro_section(ws, table_name, columns,
-                                       start_row=current_row, start_col=_AVRO_START)
+                                       start_row=current_row, start_col=_AVRO_START, is_dup=_is_dup)
         current_row = max(raw_end, avro_end) + 2   # 2-row gap ระหว่างตาราง
 
         for a in (byte_anomalies or {}).get(table_name) or []:
@@ -340,7 +348,7 @@ def _build_csv_rows(table_name: str, columns: list, anomalies: list | None = Non
 
     # Raw section
     rows.append([f"TABLE:    {table_name}"])
-    rows.append(["Raw (SQL Server)"])
+    rows.append(["New [SQL Server]"])
     rows.append(["Detail Section"])
     rows.append(["NO.", "Name", "PK or Unique", "Max Length", "Format", "Nullable", "Description", "Possible Value"])
     for i, col in enumerate(columns, 1):
@@ -354,13 +362,14 @@ def _build_csv_rows(table_name: str, columns: list, anomalies: list | None = Non
     rows.append([])  # blank gap
 
     # Confluent section (Partition Key จาก is_pk)
-    rows.append([f"TABLE:    {table_name}"])
-    rows.append(["Confluent (AVRO)"])
+    rows.append([f"Topic:    {table_name}"])
+    rows.append(["Content [AVRO]"])
     rows.append(["Detail Section"])
     rows.append(["NO.", "Name", "Partition Key", "Raw Format type", "Logical Format type", "direct move / logic", "Description", "Possible Value"])
     for i, col in enumerate(columns, 1):
         rows.append([i, col.get("column_name", ""), "Y" if col.get("is_pk") else "N",
-                     col.get("raw_type", ""), col.get("logical_type", ""), "Direct move", "", ""])
+                     col.get("raw_type", ""), col.get("logical_type", ""),
+                     "Direct move", "", ""])
 
     return rows
 

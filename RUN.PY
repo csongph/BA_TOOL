@@ -3,6 +3,7 @@ run.py - Full-stack project orchestrator
 backend/api/main.py (FastAPI) + frontend/ (static HTML)
 """
 
+import http
 import subprocess, sys, time, webbrowser, os, threading, itertools, re, shutil
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -32,7 +33,7 @@ BACKEND_HOST   = "127.0.0.1"
 BACKEND_PORT   = 8000
 FRONTEND_DIR   = "./frontend/"
 FRONTEND_PORT  = 5500
-FRONTEND_URL   = f"http://127.0.0.1:{FRONTEND_PORT}"
+FRONTEND_URL   = f"http://127.0.0.1:{FRONTEND_PORT}/frontend/index.html"
 BACKEND_URL    = f"http://{BACKEND_HOST}:{BACKEND_PORT}"
 STARTUP_WAIT   = 3.0
 

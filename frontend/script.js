@@ -207,7 +207,7 @@ async function sendSQLToBackend(sqlFiles) {
     sessionId = data.session_id;
 
     // ใส่ backend mapping result เข้า currentData
-    applyBackendTables(data.tables, data.unknown || {}, data.byte_anomalies || {});
+    applyBackendTables(data.tables, data.unknown || {}, data.byte_anomalies || {}, data.duplicate_tables || {});
 
     const unknownCount = Object.values(data.unknown || {}).flat().length;
     const anomalyCount = Object.values(data.byte_anomalies || {}).flat().length;
@@ -233,10 +233,16 @@ async function sendSQLToBackend(sqlFiles) {
 }
 
 // ── นำ backend result มาใส่ currentData ──────────────────
-function applyBackendTables(tables, unknown, byteAnomalies = {}) {
+function applyBackendTables(tables, unknown, byteAnomalies = {}, duplicateTables = {}) {
+  // รวม table ชื่อที่ backend รู้ว่าซ้ำ (ทั้งตัวต้นฉบับ และ ตัวซ้ำ)
+  const dupTableNames = new Set(Object.keys(duplicateTables));
+
   Object.entries(tables).forEach(([tableKey, cols]) => {
     const fileName    = cols[0]?.file || 'unknown.sql';
-    const isDuplicate = cols[0]?.is_duplicate || false;
+    // is_duplicate จาก backend = true เฉพาะตัวซ้ำตัวหลัง
+    // ตรวจ key มี __ = ตัวซ้ำตัวหลัง, หรือ baseName อยู่ใน dupTableNames = ตัวต้นฉบับที่มีคู่ซ้ำ
+    const baseName    = tableKey.includes('__') ? tableKey.split('__')[0] : tableKey;
+    const isDuplicate = cols[0]?.is_duplicate || tableKey.includes('__') || dupTableNames.has(baseName);
     const unknownCols = (unknown[tableKey] || []).map(u => u.column_name);
     const anomalyCols = (byteAnomalies[tableKey] || []).map(a => a.column_name);
 
@@ -373,7 +379,7 @@ async function fetchResult() {
     const res = await fetch(`${API_BASE}/result/${sessionId}`);
     if (!res.ok) throw new Error((await res.json().catch(()=>({}))).detail || res.statusText);
     const data = await res.json();
-    applyBackendTables(data.tables, data.unknown || {}, data.byte_anomalies || {});
+    applyBackendTables(data.tables, data.unknown || {}, data.byte_anomalies || {}, data.duplicate_tables || {});
     if (Object.values(data.byte_anomalies || {}).flat().length > 0)
       renderByteAnomalyWarnings(data.byte_anomalies);
     renderTypePanel();
@@ -542,6 +548,9 @@ function buildTableCard(k) {
   const previewRows = previewSrc;
   const moreRows    = 0;
 
+  const dupBannerRow = t.isDuplicate
+    ? `<tr><th colspan="${previewCols.length || 1}" class="preview-th-dup">⚠ DUPLICATE TABLE</th></tr>`
+    : '';
   const theadHtml = previewCols.map((h, idx) =>
     `<th class="${idx === 0 && isSql ? 'preview-th-num' : ''}" title="${h}">${h}</th>`).join('');
   const tbodyHtml = previewRows.map((r, i) =>
@@ -584,7 +593,7 @@ function buildTableCard(k) {
     ${pillsBlock}
     <div class="preview-wrap">
       <table class="preview-table">
-        <thead><tr>${theadHtml || '<th>—</th>'}</tr></thead>
+        <thead>${dupBannerRow}<tr>${theadHtml || '<th>—</th>'}</tr></thead>
         <tbody>${tbodyHtml || noDataHtml}</tbody>
       </table>
     </div>
@@ -758,38 +767,7 @@ async function downloadTable(key, fmt) {
   }
 }
 
-async function downloadAllCSV() {
-  const keys = Object.keys(currentData);
-  if (!keys.length) return;
-
-  const hasSql = keys.some(k => currentData[k].backendCols);
-  if (hasSql && sessionId) {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/export/${sessionId}/csv`);
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
-      triggerDownload(await res.blob(), 'confluent_mapping.csv');
-      showStatus('convertStatus', 'success', '✓ ดาวน์โหลด CSV สำเร็จ');
-    } catch (err) {
-      showStatus('convertStatus', 'error', '❌ ' + err.message);
-    } finally { setLoading(false); }
-    return;
-  }
-  const sections = keys.map(k => {
-    const t       = currentData[k];
-    const headers = t.backendCols ? MAP_HEADERS : t.headers;
-    const rows    = t.backendCols ? toMappingRows(t.backendCols) : t.rows;
-    const head    = headers.map(escCSV).join(',');
-    const body    = rows.map(r => headers.map(h => escCSV(r[h] ?? '')).join(',')).join('\n');
-    return `### ${k}\n${head}\n${body}`;
-  });
-
-  triggerDownload(
-    new Blob(['\uFEFF' + sections.join('\n\n')], { type: 'text/csv;charset=utf-8;' }),
-    'all_tables_' + Date.now() + '.csv'
-  );
-  showStatus('convertStatus', 'success', '✓ ดาวน์โหลด CSV สำเร็จ');
-}
+async function downloadAllCSV() { showTableSelectorModal('csv'); }
 
 function downloadAllExcel() {
   const keys = Object.keys(currentData);
@@ -1242,31 +1220,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Download Confluent XLSX (via backend) ─────────────────
-async function downloadAllXLSX() {
-  const keys = Object.keys(currentData).filter(k => currentData[k].backendCols);
-  if (!keys.length) {
-    showStatus('convertStatus', 'error', '❌ ไม่มีข้อมูล SQL — กรุณาอัปโหลดไฟล์ SQL ก่อน');
-    return;
-  }
-
-  // รวมทุกตารางส่งไป backend ทีเดียว
-  const tables = {};
-  keys.forEach(k => { tables[k] = currentData[k].backendCols; });
-
-  setLoading(true);
-  try {
-    const res = await fetch(`${API_BASE}/export/${sessionId}/xlsx`);
-    if (!res.ok) throw new Error((await res.json().catch(()=>({}))).detail || res.statusText);
-
-    const blob = await res.blob();
-    triggerDownload(blob, 'confluent_mapping.xlsx');
-    showStatus('convertStatus', 'success', '✓ ดาวน์โหลด XLSX สำเร็จ');
-  } catch (err) {
-    showStatus('convertStatus', 'error', '❌ ' + err.message);
-  } finally {
-    setLoading(false);
-  }
-}
+async function downloadAllXLSX() { showTableSelectorModal('xlsx'); }
 
 async function downloadTableXLSX(tableName) {
   const t = currentData[tableName];
@@ -1285,6 +1239,118 @@ async function downloadTableXLSX(tableName) {
     showStatus('convertStatus', 'success', `✓ ดาวน์โหลด ${tableName}.xlsx สำเร็จ`);
   } catch (err) {
     showStatus('convertStatus', 'error', '❌ ' + err.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+//  TABLE SELECTOR MODAL \u2014 \u0e40\u0e25\u0e37\u0e2d\u0e01 table \u0e01\u0e48\u0e2d\u0e19 export
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+function showTableSelectorModal(fmt) {
+  const allKeys = Object.keys(currentData).filter(k => currentData[k].backendCols);
+  if (!allKeys.length) {
+    showStatus('convertStatus', 'error', '\u274c \u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25 SQL \u2014 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e1f\u0e25\u0e4c SQL \u0e01\u0e48\u0e2d\u0e19');
+    return;
+  }
+
+  document.getElementById('tblSelOverlay')?.remove();
+
+  let active  = [...allKeys];
+  let removed = [];
+
+  function render(overlay) {
+    const grid    = overlay.querySelector('.tsel-chip-grid');
+    const rgrid   = overlay.querySelector('.tsel-removed-grid');
+    const rlabel  = overlay.querySelector('.tsel-removed-label');
+    const counter = overlay.querySelector('.tsel-counter');
+    const btnExp  = overlay.querySelector('.tsel-btn-export');
+
+    grid.innerHTML = active.length === 0
+      ? '<span class="tsel-empty">\u0e44\u0e21\u0e48\u0e21\u0e35 table \u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01</span>'
+      : active.map(k => {
+          const isDup = currentData[k]?.isDuplicate;
+          return `<div class="tsel-chip${isDup ? ' is-dup' : ''}">
+            ${isDup ? '<span class="tsel-dup-badge">DUP</span>' : ''}
+            <span class="tsel-chip-name">${k}</span>
+            <button class="tsel-chip-remove" data-key="${k}">\u2715</button>
+          </div>`;
+        }).join('');
+
+    rgrid.innerHTML = removed.map(k =>
+      `<div class="tsel-removed-chip">
+        <span>${k}</span>
+        <button class="tsel-restore-btn" data-key="${k}">\u21a9</button>
+      </div>`
+    ).join('');
+    rlabel.style.display = removed.length ? '' : 'none';
+    counter.textContent  = `\u0e40\u0e25\u0e37\u0e2d\u0e01 ${active.length} / ${allKeys.length} tables`;
+    btnExp.disabled      = active.length === 0;
+
+    grid.querySelectorAll('.tsel-chip-remove').forEach(btn => {
+      btn.onclick = () => {
+        const k = btn.dataset.key;
+        active = active.filter(x => x !== k);
+        removed = [k, ...removed];
+        render(overlay);
+      };
+    });
+    rgrid.querySelectorAll('.tsel-restore-btn').forEach(btn => {
+      btn.onclick = () => {
+        const k = btn.dataset.key;
+        removed = removed.filter(x => x !== k);
+        active = allKeys.filter(x => x === k || active.includes(x));
+        render(overlay);
+      };
+    });
+  }
+
+  const overlay = document.createElement('div');
+  overlay.id        = 'tblSelOverlay';
+  overlay.className = 'tsel-overlay';
+  overlay.innerHTML = `
+    <div class="tsel-modal">
+      <div class="tsel-modal-header">
+        <div>
+          <div class="tsel-modal-title">\u0e40\u0e25\u0e37\u0e2d\u0e01 Table \u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23 Export</div>
+          <div class="tsel-counter"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="tsel-btn-all" id="tselBtnAll">Restore \u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14</button>
+          <button class="tsel-btn-all" id="tselBtnNone">\u0e25\u0e1a\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14</button>
+        </div>
+      </div>
+      <div class="tsel-chip-grid"></div>
+      <div class="tsel-removed-label" style="display:none">\u0e16\u0e39\u0e01\u0e19\u0e33\u0e2d\u0e2d\u0e01</div>
+      <div class="tsel-removed-grid"></div>
+      <div class="tsel-modal-footer">
+        <button class="tsel-btn-cancel">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>
+        <button class="tsel-btn-export">Export ${fmt.toUpperCase()}</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  render(overlay);
+
+  overlay.querySelector('#tselBtnAll').onclick  = () => { active = [...allKeys]; removed = []; render(overlay); };
+  overlay.querySelector('#tselBtnNone').onclick = () => { removed = [...allKeys]; active = []; render(overlay); };
+  overlay.querySelector('.tsel-btn-cancel').onclick  = () => overlay.remove();
+  overlay.querySelector('.tsel-btn-export').onclick  = () => { overlay.remove(); doExportSelected(fmt, active); };
+}
+
+async function doExportSelected(fmt, selectedKeys) {
+  if (!selectedKeys.length) return;
+  const qs  = selectedKeys.map(k => `tables=${encodeURIComponent(k)}`).join('&');
+  const url = `${API_BASE}/export/${sessionId}/${fmt}?${qs}`;
+  setLoading(true);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    triggerDownload(await res.blob(), `confluent_mapping_${Date.now()}.${fmt}`);
+    showStatus('convertStatus', 'success', `\u2713 Export ${fmt.toUpperCase()} \u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08 (${selectedKeys.length} tables)`);
+  } catch (err) {
+    showStatus('convertStatus', 'error', '\u274c ' + err.message);
   } finally {
     setLoading(false);
   }
