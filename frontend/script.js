@@ -609,34 +609,28 @@ function buildTableCard(k) {
   </div>`;
 }
 
+// ═══════════════════════════════════════════════════════════
+//  BUILD PILLS — แสดงเฉพาะ PK และ FK เท่านั้น
+// ═══════════════════════════════════════════════════════════
 function buildPillsHTML(backendCols) {
-  // แสดงเฉพาะ PK / FK / Error (unknown หรือ byte anomaly)
-  const pkCols    = backendCols.filter(c => c.is_pk);
-  const fkCols    = backendCols.filter(c => c.fk && !c.is_pk);
-  const errorCols = backendCols.filter(c => (c.isUnknown || c.isByteAnomaly) && !c.is_pk && !c.fk);
+  const pkCols = backendCols.filter(c => c.is_pk);
+  const fkCols = backendCols.filter(c => c.fk && !c.is_pk);
 
-  if (!pkCols.length && !fkCols.length && !errorCols.length) {
-    return `<span class="bcol-empty-hint">ไม่มี PK / FK / Error</span>`;
+  if (!pkCols.length && !fkCols.length) {
+    return `<span class="bcol-empty-hint">ไม่มี PK / FK</span>`;
   }
 
   function pill(c, tag) {
-    const cls = c.isByteAnomaly ? ' byte-anomaly'
-              : c.isUnknown     ? ' unknown'
-              : '';
-    const tooltip = c.isByteAnomaly ? `⚠️ byte anomaly: source=${c.source_sql_type}`
-                  : c.fk            ? `FK → ${c.fk.ref_table}.${c.fk.ref_column || '?'}`
-                  : `source: ${c.source_sql_type || ''}`;
-    const errorBadge = c.isByteAnomaly ? '<span class="anomaly-pill-badge">⚠️byte</span>'
-                     : c.isUnknown     ? '<span class="anomaly-pill-badge">?unk</span>'
-                     : '';
-    return `<span class="bcol-pill${cls}" title="${tooltip}">
-      <span class="pill-tag pill-tag-${tag}">${tag}</span>${c.column_name}<em>${c.final_type || c.logical_type || '?'}</em>${errorBadge}</span>`;
+    const tooltip = c.fk
+      ? `FK → ${c.fk.ref_table}.${c.fk.ref_column || '?'}`
+      : `source: ${c.source_sql_type || ''}`;
+    return `<span class="bcol-pill" title="${tooltip}">
+      <span class="pill-tag pill-tag-${tag}">${tag}</span>${c.column_name}<em>${c.final_type || c.logical_type || '?'}</em></span>`;
   }
 
   return [
-    ...pkCols.map(c    => pill(c, 'PK')),
-    ...fkCols.map(c    => pill(c, 'FK')),
-    ...errorCols.map(c => pill(c, 'ERR')),
+    ...pkCols.map(c => pill(c, 'PK')),
+    ...fkCols.map(c => pill(c, 'FK')),
   ].join('');
 }
 
@@ -728,8 +722,8 @@ function toMappingRows(backendCols) {
     final_type      : c.final_type      || '',
     source_sql_type : c.source_sql_type || '',
     nullable        : c.nullable        || 'NULL',
-    is_pk           : c.is_pk ? 'PK' : 'no',
-    fk_ref          : c.fk ? `${c.fk.ref_table}.${c.fk.ref_column || '?'}` : 'no',
+    is_pk           : c.is_pk ? 'PK' : '',
+    fk_ref          : c.fk ? `${c.fk.ref_table}.${c.fk.ref_column || '?'}` : '',
   }));
 }
 
@@ -1245,13 +1239,13 @@ async function downloadTableXLSX(tableName) {
 }
 
 
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-//  TABLE SELECTOR MODAL \u2014 \u0e40\u0e25\u0e37\u0e2d\u0e01 table \u0e01\u0e48\u0e2d\u0e19 export
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// ═══════════════════════════════════════════════════════════
+//  TABLE SELECTOR MODAL — เลือก table ก่อน export
+// ═══════════════════════════════════════════════════════════
 function showTableSelectorModal(fmt) {
   const allKeys = Object.keys(currentData).filter(k => currentData[k].backendCols);
   if (!allKeys.length) {
-    showStatus('convertStatus', 'error', '\u274c \u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25 SQL \u2014 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e1f\u0e25\u0e4c SQL \u0e01\u0e48\u0e2d\u0e19');
+    showStatus('convertStatus', 'error', '❌ ไม่มีข้อมูล SQL — กรุณาอัปโหลดไฟล์ SQL ก่อน');
     return;
   }
 
@@ -1268,24 +1262,24 @@ function showTableSelectorModal(fmt) {
     const btnExp  = overlay.querySelector('.tsel-btn-export');
 
     grid.innerHTML = active.length === 0
-      ? '<span class="tsel-empty">\u0e44\u0e21\u0e48\u0e21\u0e35 table \u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01</span>'
+      ? '<span class="tsel-empty">ไม่มี table ที่เลือก</span>'
       : active.map(k => {
           const isDup = currentData[k]?.isDuplicate;
           return `<div class="tsel-chip${isDup ? ' is-dup' : ''}">
             ${isDup ? '<span class="tsel-dup-badge">DUP</span>' : ''}
             <span class="tsel-chip-name">${k}</span>
-            <button class="tsel-chip-remove" data-key="${k}">\u2715</button>
+            <button class="tsel-chip-remove" data-key="${k}">✕</button>
           </div>`;
         }).join('');
 
     rgrid.innerHTML = removed.map(k =>
       `<div class="tsel-removed-chip">
         <span>${k}</span>
-        <button class="tsel-restore-btn" data-key="${k}">\u21a9</button>
+        <button class="tsel-restore-btn" data-key="${k}">↩</button>
       </div>`
     ).join('');
     rlabel.style.display = removed.length ? '' : 'none';
-    counter.textContent  = `\u0e40\u0e25\u0e37\u0e2d\u0e01 ${active.length} / ${allKeys.length} tables`;
+    counter.textContent  = `เลือก ${active.length} / ${allKeys.length} tables`;
     btnExp.disabled      = active.length === 0;
 
     grid.querySelectorAll('.tsel-chip-remove').forEach(btn => {
@@ -1313,19 +1307,19 @@ function showTableSelectorModal(fmt) {
     <div class="tsel-modal">
       <div class="tsel-modal-header">
         <div>
-          <div class="tsel-modal-title">\u0e40\u0e25\u0e37\u0e2d\u0e01 Table \u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23 Export</div>
+          <div class="tsel-modal-title">เลือก Table ที่ต้องการ Export</div>
           <div class="tsel-counter"></div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="tsel-btn-all" id="tselBtnAll">Restore \u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14</button>
-          <button class="tsel-btn-all" id="tselBtnNone">\u0e25\u0e1a\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14</button>
+          <button class="tsel-btn-all" id="tselBtnAll">Restore ทั้งหมด</button>
+          <button class="tsel-btn-all" id="tselBtnNone">ลบทั้งหมด</button>
         </div>
       </div>
       <div class="tsel-chip-grid"></div>
-      <div class="tsel-removed-label" style="display:none">\u0e16\u0e39\u0e01\u0e19\u0e33\u0e2d\u0e2d\u0e01</div>
+      <div class="tsel-removed-label" style="display:none">ถูกนำออก</div>
       <div class="tsel-removed-grid"></div>
       <div class="tsel-modal-footer">
-        <button class="tsel-btn-cancel">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>
+        <button class="tsel-btn-cancel">ยกเลิก</button>
         <button class="tsel-btn-export">Export ${fmt.toUpperCase()}</button>
       </div>
     </div>`;
@@ -1348,9 +1342,9 @@ async function doExportSelected(fmt, selectedKeys) {
     const res = await fetch(url);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
     triggerDownload(await res.blob(), `confluent_mapping_${Date.now()}.${fmt}`);
-    showStatus('convertStatus', 'success', `\u2713 Export ${fmt.toUpperCase()} \u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08 (${selectedKeys.length} tables)`);
+    showStatus('convertStatus', 'success', `✓ Export ${fmt.toUpperCase()} สำเร็จ (${selectedKeys.length} tables)`);
   } catch (err) {
-    showStatus('convertStatus', 'error', '\u274c ' + err.message);
+    showStatus('convertStatus', 'error', '❌ ' + err.message);
   } finally {
     setLoading(false);
   }
